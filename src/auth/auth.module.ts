@@ -33,5 +33,6 @@ import { TokenService } from './token.service';
     AppleSocialVerifier,
     MockSocialVerifier,
   ],
+  exports: [RefreshTokenStore],
 })
 export class AuthModule {}
