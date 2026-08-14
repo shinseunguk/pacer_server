@@ -1,6 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { Public } from '../auth/decorators/public.decorator';
 import { RedisService } from '../redis/redis.service';
 
 interface HealthResult {
@@ -9,6 +11,7 @@ interface HealthResult {
   redis: boolean;
 }
 
+@ApiTags('health')
 @Controller('health')
 export class HealthController {
   constructor(
@@ -16,7 +19,9 @@ export class HealthController {
     private readonly redis: RedisService,
   ) {}
 
+  @Public()
   @Get()
+  @ApiOperation({ summary: '헬스체크 (DB·Redis 연결)' })
   async check(): Promise<HealthResult> {
     const [db, redis] = await Promise.all([this.pingDb(), this.pingRedis()]);
 
