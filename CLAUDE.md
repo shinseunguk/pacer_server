@@ -3,6 +3,29 @@
 > 페이서 백엔드. 공통 워크플로우는 상위 `Pacer/CLAUDE.md`를 따른다.
 > 클라이언트는 별도 레포 `pacer_app`(Flutter).
 
+## 설계 문서 (docs/)
+구현 전 반드시 참조한다. 이 중 **ERD·API 명세는 "계약"**으로 취급한다(임의 변경 금지, 변경이 필요하면 문서를 먼저 갱신).
+- `docs/Pacer_기획서_v1.md`
+- `docs/Pacer_데이터모델_ERD_v1.md`
+- `docs/Pacer_API명세_v1.md`
+- `docs/Pacer_AI프롬프트설계_v1.md`
+- `docs/Pacer_기술아키텍처_v1.md`
+- `docs/Pacer_MVP범위_v1.md`
+
+## 작업 가드레일 (Phase A)
+- **범위**: `docs/Pacer_MVP범위_v1.md`의 **Phase A(클로즈드 베타, 결제 제외)만** 구현한다.
+  **Phase B(한도·페이월·IAP)와 결제/페이월은 지금 구현하지 않는다.**
+- **마일스톤(한 번에 하나씩)**:
+  1. 백엔드 코어: 스키마 → 인증(카카오/애플) → 세션·메시지 API
+  2. LLM 파이프라인: 질문 생성 → 꼬리질문 → 최종 평가(직무 가중치) + 출력 스키마 검증
+  3. (앱) 온보딩 → 준비/설정 → 진행(SSE) → 리포트 → 히스토리
+  4. 클로즈드 베타 배포 → 면접·평가 품질 검증
+- **계약 우선**: ERD·API 명세를 계약으로 취급. 임의 변경 금지, 필요 시 **문서 갱신 제안 → 마이그레이션**.
+- **LLM 출력 검증**: 항상 지정 JSON 스키마로 받고 **서버에서 zod로 검증**, 파싱 실패 시 1회 재요청.
+- **plan 먼저**: 큰 작업은 plan을 제시·승인 후 진행한다.
+- **시크릿**: LLM API 키·시크릿은 서버에만. 클라이언트 노출 금지.
+- **모듈 = 도메인 단위**: `auth / users / jobs / interviews / subscriptions / usage / llm`.
+
 ## 스택
 - NestJS 11 / Node 24 / TypeScript
 - DB: PostgreSQL · 캐시: Redis · 배포: Docker + EC2
