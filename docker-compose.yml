@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pacer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pacer
+      POSTGRES_PASSWORD: pacer
+      POSTGRES_DB: pacer
+    # 로컬에 이미 PostgreSQL(5432)이 있는 경우가 흔해 host 포트를 5434로 매핑한다.
+    ports:
+      - '5434:5432'
+    volumes:
+      - pacer-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pacer -d pacer']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pacer-redis
+    restart: unless-stopped
+    # 로컬 Redis(6379) 충돌 회피용으로 host 포트를 6381로 매핑한다.
+    ports:
+      - '6381:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pacer-pg-data:
