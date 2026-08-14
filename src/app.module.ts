@@ -6,6 +6,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
 
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
     RedisModule,
     AuthModule,
     UsersModule,
+    JobsModule,
     HealthModule,
   ],
   providers: [
