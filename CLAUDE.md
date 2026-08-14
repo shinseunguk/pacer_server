@@ -40,3 +40,42 @@ npm run test:e2e # (엔드포인트 추가 시) e2e
 - 이력서·자소서·면접 답변은 **민감 개인정보**. 로그에 원문 출력 금지.
 - API 키·시크릿·DB 접속정보는 `.env`로만 관리(`.gitignore` 적용됨). 예시는 `.env.example`.
 - API 추가 시 `@nestjs/swagger`로 문서화 → 추후 앱 클라이언트 생성 기반.
+
+---
+
+## 환경설정 + API 규약
+- `@nestjs/config` — `ConfigModule.forRoot({ isGlobal: true, validationSchema })`로 부팅 시 env 검증.
+- `.env.example` 키(예): `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `LLM_API_KEY`, `KAKAO_*` / `APPLE_*` / `GOOGLE_*`.
+- **API 버전 prefix**: `/api/v1`.
+- **응답 포맷 표준화**: 성공 `{ data }`, 에러 `{ statusCode, code, message }` — 전역 `ExceptionFilter` + `ResponseInterceptor`.
+- **페이지네이션**: `?page=&size=` → `{ items, total, page, size }`.
+- 입력 검증은 전역 `ValidationPipe`(whitelist, transform).
+
+## 인증 (JWT·소셜)
+- 소셜 로그인: 앱이 받은 provider 토큰을 **서버가 검증**한다(카카오/구글 tokeninfo, 애플 JWKS 서명 검증).
+- **애플**: 최초 1회만 제공되는 이름·이메일을 **즉시 DB 저장**. 이메일은 `nullable`(Private Relay/거부 대비).
+- **JWT**: access(짧게) / refresh(길게, 회전 rotation). `JwtAuthGuard` + `@Public()` 데코레이터.
+- 토큰 저장은 앱의 secure storage 책임. 서버는 refresh 토큰 해시만 보관.
+
+## DB (ORM)
+- **TypeORM** 사용(권장) — `@nestjs/typeorm` 공식 통합, 엔티티 데코레이터가 Nest 스타일과 정합.
+  - 대안: Prisma(타입 안전·DX 우수). 파이프라인이 복잡해지면 재검토.
+- **마이그레이션**: 운영은 `synchronize: false`. 스키마 변경은 CLI 마이그레이션 파일로 관리하고 **커밋에 포함**.
+- 핵심 엔티티(예): `users` / `interview_session` / `question` / `answer` / `evaluation`.
+
+## LLM 프록시 + 보안
+- **프롬프트 버전관리**: 프롬프트·평가 루브릭(직무별 가중치)을 코드/상수로 버전 관리. "알아서"에 맡기지 않는다.
+- **스트리밍**: LLM 응답을 **SSE**로 앱에 중계. 취소·타임아웃·재시도 처리.
+- **가드레일**: 불법·차별 질문(나이·결혼·출신 등) 생성 방지 필터 + 사용자 입력 모더레이션.
+- **비용/사용량**: 토큰 사용량 로깅. 하루 질문 카운터는 **Redis**로(자정 KST TTL 리셋, 꼬리질문 제외).
+- **보안**: `helmet`, CORS 화이트리스트, rate limiting(`@nestjs/throttler`).
+- **개인정보**: 이력서·답변 원문 **로그 출력 금지**, 분석 후 미저장 옵션 검토, 회원 탈퇴 시 지체 없이 파기. 외부 LLM 사용 시 **처리위탁·국외이전 고지**.
+
+---
+
+## 커밋 규칙
+전역 `commit-convention` + 상위 `Pacer/CLAUDE.md` 워크플로우를 따른다.
+- Conventional Commits(`<타입>[범위]: <설명>`), 꼬리말 `closed #<이슈번호>`.
+- 브랜치: `main`에서 `<타입>/#<이슈번호>-<슬러그>` 분기(`main` 직접 커밋 금지).
+- 커밋 메시지에 `Co-Authored-By`·AI 서명 금지. author `shinseunguk <krdut1@gmail.com>`.
+- 커밋/푸시/PR은 사용자가 요청할 때(개발·테스트까지가 자동 범위).
