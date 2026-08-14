@@ -26,6 +26,9 @@ export const envValidationSchema = Joi.object({
   APPLE_TEAM_ID: Joi.string().allow('').optional(),
   APPLE_KEY_ID: Joi.string().allow('').optional(),
 
+  // 사용량 — Phase A는 페이월 미노출이라 넉넉히 두고, Phase B에서 20으로 조인다.
+  FREE_DAILY_QUESTION_LIMIT: Joi.number().default(20),
+
   // 마일스톤 2 (LLM 프록시)
   LLM_API_KEY: Joi.string().allow('').optional(),
 });

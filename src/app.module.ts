@@ -7,6 +7,7 @@ import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { RedisModule } from './redis/redis.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RedisModule } from './redis/redis.module';
     DatabaseModule,
     RedisModule,
     AuthModule,
+    UsersModule,
     HealthModule,
   ],
   providers: [
