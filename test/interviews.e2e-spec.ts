@@ -316,8 +316,9 @@ describe('Interviews (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    const found = (listing.body as { items: { id: string; status: string }[] })
-      .items.find((item) => item.id === created.sessionId);
+    const found = (
+      listing.body as { items: { id: string; status: string }[] }
+    ).items.find((item) => item.id === created.sessionId);
     expect(found?.status).toBe('in_progress');
 
     // 종료하면 목록 상태도 바뀐다.
@@ -332,8 +333,9 @@ describe('Interviews (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    const completed = (after.body as { items: { id: string; status: string }[] })
-      .items.find((item) => item.id === created.sessionId);
+    const completed = (
+      after.body as { items: { id: string; status: string }[] }
+    ).items.find((item) => item.id === created.sessionId);
     expect(completed?.status).toBe('completed');
   });
 
