@@ -253,6 +253,61 @@ describe('Interviews (e2e)', () => {
     expect(found?.score).toBe(report.overallScore);
   });
 
+  it('리포트 만족도를 남기고 재열람 시 복원된다', async () => {
+    const created = await createSession();
+    await answer(created.sessionId);
+    await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const up = await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/feedback`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rating: 'up' })
+      .expect(200);
+    expect(up.body).toEqual({ rating: 'up', comment: null });
+
+    // 마음이 바뀌어 다시 남기면 갱신된다.
+    await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/feedback`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rating: 'down', comment: '점수 근거가 약해요' })
+      .expect(200);
+
+    const detail = await request(app.getHttpServer())
+      .get(`/v1/interviews/${created.sessionId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect((detail.body as { feedback: unknown }).feedback).toEqual({
+      rating: 'down',
+      comment: '점수 근거가 약해요',
+    });
+  });
+
+  it('끝나지 않은 면접에는 만족도를 남길 수 없다(409)', async () => {
+    const created = await createSession();
+
+    const res = await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/feedback`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rating: 'up' })
+      .expect(409);
+
+    expect((res.body as ErrorBody).error.code).toBe('SESSION_NOT_COMPLETED');
+  });
+
+  it('rating 값이 잘못되면 400', async () => {
+    const created = await createSession();
+
+    await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/feedback`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rating: 'maybe' })
+      .expect(400);
+  });
+
   it('남의 면접에는 접근할 수 없다(403)', async () => {
     const created = await createSession();
 

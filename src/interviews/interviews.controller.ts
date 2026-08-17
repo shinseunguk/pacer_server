@@ -17,6 +17,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { ListInterviewsDto } from './dto/list-interviews.dto';
+import { SubmitFeedbackDto } from './dto/session-feedback.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import {
   CompleteResult,
@@ -26,6 +27,7 @@ import {
   InterviewsService,
   InterviewTurn,
   ResumeResult,
+  SessionFeedbackView,
   SkipResult,
 } from './interviews.service';
 import { openSseStream, toDeltas, writeSseEvent } from './sse';
@@ -120,6 +122,17 @@ export class InterviewsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CompleteResult> {
     return this.interviews.complete(user.userId, id);
+  }
+
+  @Post(':id/feedback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '리포트 만족도 제출 (👍/👎)' })
+  submitFeedback(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmitFeedbackDto,
+  ): Promise<SessionFeedbackView> {
+    return this.interviews.submitFeedback(user.userId, id, dto);
   }
 
   @Get()

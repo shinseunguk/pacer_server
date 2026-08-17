@@ -27,7 +27,12 @@ import { InterviewMessage } from './entities/interview-message.entity';
 import { InterviewSession } from './entities/interview-session.entity';
 import { MessageFeedback } from './entities/message-feedback.entity';
 import { SessionEvaluation } from './entities/session-evaluation.entity';
+import { SessionFeedback } from './entities/session-feedback.entity';
 import { QuestionPlanStore } from './question-plan.store';
+import {
+  FeedbackRating,
+  SubmitFeedbackDto,
+} from './dto/session-feedback.dto';
 
 /** 같은 기본 질문에서 파고들 수 있는 최대 꼬리질문 수 (프롬프트 설계 §4). */
 export const MAX_FOLLOW_UP = 2;
@@ -99,6 +104,12 @@ export interface DetailMessageView extends MessageView {
   feedback?: { feedback: string | null; modelAnswer: string | null };
 }
 
+/** 리포트 만족도 (MVP 성공 기준 §6). */
+export interface SessionFeedbackView {
+  rating: FeedbackRating;
+  comment: string | null;
+}
+
 export interface InterviewDetail {
   session: {
     id: string;
@@ -111,6 +122,9 @@ export interface InterviewDetail {
   };
   messages: DetailMessageView[];
   report: ReportView | null;
+
+  /** 내가 이 리포트에 남긴 평가 (없으면 null) */
+  feedback: SessionFeedbackView | null;
 }
 
 export interface InterviewListItem {
@@ -140,6 +154,8 @@ export class InterviewsService {
     private readonly scoreRepo: Repository<EvaluationScore>,
     @InjectRepository(MessageFeedback)
     private readonly feedbackRepo: Repository<MessageFeedback>,
+    @InjectRepository(SessionFeedback)
+    private readonly sessionFeedbackRepo: Repository<SessionFeedback>,
     @InjectRepository(JobRole)
     private readonly jobRoleRepo: Repository<JobRole>,
     private readonly planStore: QuestionPlanStore,
@@ -396,6 +412,57 @@ export class InterviewsService {
         return view;
       }),
       report: await this.loadReport(session),
+      feedback: await this.loadFeedback(session.id),
+    };
+  }
+
+  /**
+   * 리포트 만족도 제출 — 같은 세션에 다시 내면 갱신한다(마음이 바뀔 수 있으므로).
+   * 평가가 나오기 전에는 남길 것이 없으므로 완료된 면접만 허용한다.
+   */
+  async submitFeedback(
+    userId: string,
+    sessionId: string,
+    dto: SubmitFeedbackDto,
+  ): Promise<SessionFeedbackView> {
+    const session = await this.loadOwnedSession(userId, sessionId);
+
+    if (session.status !== SESSION_STATUS.completed) {
+      throw new AppException(
+        'SESSION_NOT_COMPLETED',
+        '면접이 끝난 뒤에 평가할 수 있어요.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const existing = await this.sessionFeedbackRepo.findOne({
+      where: { session: { id: sessionId } },
+    });
+    const comment = dto.comment?.trim();
+
+    const saved = await this.sessionFeedbackRepo.save(
+      this.sessionFeedbackRepo.create({
+        ...existing,
+        session,
+        rating: dto.rating,
+        comment: comment && comment.length > 0 ? comment : null,
+      }),
+    );
+
+    return { rating: saved.rating as FeedbackRating, comment: saved.comment };
+  }
+
+  private async loadFeedback(
+    sessionId: string,
+  ): Promise<SessionFeedbackView | null> {
+    const feedback = await this.sessionFeedbackRepo.findOne({
+      where: { session: { id: sessionId } },
+    });
+    if (!feedback) return null;
+
+    return {
+      rating: feedback.rating as FeedbackRating,
+      comment: feedback.comment,
     };
   }
 
