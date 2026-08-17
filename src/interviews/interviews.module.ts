@@ -8,6 +8,7 @@ import { InterviewMessage } from './entities/interview-message.entity';
 import { InterviewSession } from './entities/interview-session.entity';
 import { MessageFeedback } from './entities/message-feedback.entity';
 import { SessionEvaluation } from './entities/session-evaluation.entity';
+import { SessionFeedback } from './entities/session-feedback.entity';
 import { InterviewsController } from './interviews.controller';
 import { InterviewsService } from './interviews.service';
 import { QuestionPlanStore } from './question-plan.store';
@@ -20,6 +21,7 @@ import { QuestionPlanStore } from './question-plan.store';
       SessionEvaluation,
       EvaluationScore,
       MessageFeedback,
+      SessionFeedback,
       JobRole,
     ]),
     UsageModule,

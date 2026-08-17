@@ -100,6 +100,7 @@ describe('InterviewsService', () => {
   let evaluationRepo: Repo;
   let scoreRepo: Repo;
   let feedbackRepo: Repo;
+  let sessionFeedbackRepo: Repo;
   let jobRoleRepo: Repo;
   let planStore: { save: jest.Mock; get: jest.Mock; clear: jest.Mock };
   let usage: { consumeBaseQuestion: jest.Mock };
@@ -117,6 +118,7 @@ describe('InterviewsService', () => {
     evaluationRepo = createRepo('eval');
     scoreRepo = createRepo('score');
     feedbackRepo = createRepo('feedback');
+    sessionFeedbackRepo = createRepo('session-feedback');
     jobRoleRepo = createRepo('role');
     planStore = {
       save: jest.fn().mockResolvedValue(undefined),
@@ -140,6 +142,7 @@ describe('InterviewsService', () => {
       evaluationRepo as never,
       scoreRepo as never,
       feedbackRepo as never,
+      sessionFeedbackRepo as never,
       jobRoleRepo as never,
       planStore as unknown as QuestionPlanStore,
       usage as unknown as UsageService,
@@ -523,6 +526,70 @@ describe('InterviewsService', () => {
     });
   });
 
+  describe('submitFeedback', () => {
+    it('완료된 면접에 👍를 남긴다', async () => {
+      sessionRepo.findOne.mockResolvedValue(session({ status: 'completed' }));
+
+      await expect(
+        service.submitFeedback(USER_ID, SESSION_ID, { rating: 'up' }),
+      ).resolves.toEqual({ rating: 'up', comment: null });
+    });
+
+    it('👎 이유는 trim해서 저장한다', async () => {
+      sessionRepo.findOne.mockResolvedValue(session({ status: 'completed' }));
+
+      const result = await service.submitFeedback(USER_ID, SESSION_ID, {
+        rating: 'down',
+        comment: '  점수 근거가 약해요  ',
+      });
+
+      expect(result).toEqual({ rating: 'down', comment: '점수 근거가 약해요' });
+    });
+
+    it('빈 이유는 null로 저장한다', async () => {
+      sessionRepo.findOne.mockResolvedValue(session({ status: 'completed' }));
+
+      const result = await service.submitFeedback(USER_ID, SESSION_ID, {
+        rating: 'down',
+        comment: '   ',
+      });
+
+      expect(result.comment).toBeNull();
+    });
+
+    it('다시 평가하면 기존 것을 갱신한다', async () => {
+      sessionRepo.findOne.mockResolvedValue(session({ status: 'completed' }));
+      sessionFeedbackRepo.findOne.mockResolvedValue({ id: 'feedback-1' });
+
+      await service.submitFeedback(USER_ID, SESSION_ID, { rating: 'up' });
+
+      expect(sessionFeedbackRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'feedback-1', rating: 'up' }),
+      );
+    });
+
+    it('아직 끝나지 않은 면접은 409', async () => {
+      sessionRepo.findOne.mockResolvedValue(session());
+
+      await expectStatus(
+        service.submitFeedback(USER_ID, SESSION_ID, { rating: 'up' }),
+        HttpStatus.CONFLICT,
+      );
+      expect(sessionFeedbackRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('남의 면접이면 403', async () => {
+      sessionRepo.findOne.mockResolvedValue(
+        session({ status: 'completed', user: { id: 'other' } }),
+      );
+
+      await expectStatus(
+        service.submitFeedback(USER_ID, SESSION_ID, { rating: 'up' }),
+        HttpStatus.FORBIDDEN,
+      );
+    });
+  });
+
   describe('list', () => {
     it('limit+1을 조회해 다음 커서를 계산한다', async () => {
       const sessions = [
@@ -592,6 +659,7 @@ describe('InterviewsService', () => {
       });
       expect(detail.messages[1].feedback).toBeUndefined();
       expect(detail.report).toBeNull();
+      expect(detail.feedback).toBeNull();
     });
   });
 });

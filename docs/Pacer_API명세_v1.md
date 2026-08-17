@@ -227,6 +227,16 @@
 - 비고: `showScore=false`여도 `passResult`·`passReason`·모범답안은 제공
 - US: US-4.2, US-4.4
 
+### POST /interviews/{id}/feedback
+리포트 만족도 (MVP 성공 기준 §6 "리포트 👍 비율"의 원천).
+
+- Request: `{ "rating": "up" | "down", "comment": "점수 근거가 약해요" }`
+  - `comment`는 선택(최대 500자). 👎일 때 이유를 받는 용도
+- Response 200: `{ "rating": "down", "comment": "점수 근거가 약해요" }`
+- 재제출 시 기존 평가를 **갱신**한다(세션 1:1)
+- 에러: 409 `SESSION_NOT_COMPLETED`(면접 미완료), 403(타인 세션)
+- US: US-4.2 (평가 납득 여부 수집)
+
 ### GET /interviews/{id}
 대화 전문 재열람 (메시지 + 피드백 + 리포트).
 
@@ -240,9 +250,11 @@
     { "seq": 3, "role": "interviewer", "type": "follow_up", "parentId": "uuid", "content": "...",
       "feedback": { "feedback": "...", "modelAnswer": "..." } }
   ],
-  "report": { "overallScore": 78, "passResult": "pass", "...": "..." }
+  "report": { "overallScore": 78, "passResult": "pass", "...": "..." },
+  "feedback": { "rating": "up", "comment": null }
 }
 ```
+- `feedback`은 내가 남긴 리포트 만족도(없으면 `null`)
 - US: US-5.1
 
 ### GET /interviews
@@ -371,6 +383,7 @@ data: {"code":"...","message":"..."}
 | Interviews | POST /interviews/{id}/answer (SSE) | 3.1, 3.2, 6.1 |
 | Interviews | POST /interviews/{id}/skip·pause·resume | 3.3, 3.4 |
 | Interviews | POST /interviews/{id}/complete | 4.2, 4.4 |
+| Interviews | POST /interviews/{id}/feedback | 4.2 |
 | Interviews | GET /interviews · GET /interviews/{id} | 5.1 |
 | Growth | GET /growth/summary | 5.2 |
 | Subscriptions | GET·POST /subscriptions/* | 6.2 |
