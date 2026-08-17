@@ -7,9 +7,10 @@ import { UsageService, UsageSummary } from '../usage/usage.service';
 import { AgreementsDto } from './dto/onboarding.dto';
 import { UserAgreement } from './entities/user-agreement.entity';
 import { User } from './entities/user.entity';
+import { assertValidNickname, nicknameKey } from './nickname.rule';
 
-const NICKNAME_MIN_LENGTH = 1;
-const NICKNAME_MAX_LENGTH = 20;
+/** Postgres unique_violation — 동시에 같은 닉네임을 저장하려 할 때. */
+const UNIQUE_VIOLATION = '23505';
 
 export interface UserProfile {
   id: string;
@@ -35,12 +36,14 @@ export class UsersService {
     nickname: string,
     agreements: AgreementsDto,
   ): Promise<{ onboardingCompleted: true }> {
-    const trimmed = this.validateNickname(nickname);
+    const trimmed = assertValidNickname(nickname);
     this.assertRequiredAgreements(agreements);
 
     const user = await this.findActiveUser(userId);
+    await this.assertNicknameAvailable(trimmed, user.id);
+
     user.nickname = trimmed;
-    await this.userRepo.save(user);
+    await this.saveUserNickname(user);
 
     await this.saveAgreements(user, agreements);
     return { onboardingCompleted: true };
@@ -52,11 +55,13 @@ export class UsersService {
   }
 
   async updateNickname(userId: string, nickname: string): Promise<UserProfile> {
-    const trimmed = this.validateNickname(nickname);
+    const trimmed = assertValidNickname(nickname);
 
     const user = await this.findActiveUser(userId);
+    await this.assertNicknameAvailable(trimmed, user.id);
+
     user.nickname = trimmed;
-    await this.userRepo.save(user);
+    await this.saveUserNickname(user);
 
     return this.toProfile(user);
   }
@@ -122,19 +127,58 @@ export class UsersService {
     return user;
   }
 
-  private validateNickname(nickname: string): string {
-    const trimmed = nickname.trim();
-    if (
-      trimmed.length < NICKNAME_MIN_LENGTH ||
-      trimmed.length > NICKNAME_MAX_LENGTH
-    ) {
-      throw new AppException(
-        'INVALID_NICKNAME',
-        `닉네임은 ${NICKNAME_MIN_LENGTH}~${NICKNAME_MAX_LENGTH}자로 입력해주세요.`,
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
+  /**
+   * 닉네임 중복 검사 — 대소문자를 무시하고 비교한다(`nicknameKey`).
+   * 본인이 이미 쓰던 닉네임은 그대로 통과시킨다(재온보딩·동일값 저장 대비).
+   */
+  private async assertNicknameAvailable(
+    nickname: string,
+    userId: string,
+  ): Promise<void> {
+    if (await this.isNicknameTaken(nickname, userId)) throw nicknameTaken();
+  }
+
+  private async isNicknameTaken(
+    nickname: string,
+    excludeUserId?: string,
+  ): Promise<boolean> {
+    const query = this.userRepo
+      .createQueryBuilder('user')
+      .where('lower(user.nickname) = :key', { key: nicknameKey(nickname) });
+
+    if (excludeUserId) {
+      query.andWhere('user.id <> :userId', { userId: excludeUserId });
     }
-    return trimmed;
+    return (await query.getCount()) > 0;
+  }
+
+  /**
+   * 닉네임 사용 가능 여부 (온보딩 화면 실시간 확인용).
+   * 형식이 어긋나면 422로 막고, 통과하면 중복만 알려준다.
+   */
+  async checkNicknameAvailability(
+    nickname: string,
+    userId: string,
+  ): Promise<{ nickname: string; available: boolean }> {
+    const trimmed = assertValidNickname(nickname);
+
+    return {
+      nickname: trimmed,
+      available: !(await this.isNicknameTaken(trimmed, userId)),
+    };
+  }
+
+  /**
+   * 저장 — 검사와 저장 사이에 다른 요청이 같은 닉네임을 선점할 수 있으므로
+   * DB 유니크 위반도 409로 변환한다(경쟁 상태 방어).
+   */
+  private async saveUserNickname(user: User): Promise<void> {
+    try {
+      await this.userRepo.save(user);
+    } catch (error) {
+      if (isUniqueViolation(error)) throw nicknameTaken();
+      throw error;
+    }
   }
 
   private assertRequiredAgreements(agreements: AgreementsDto): void {
@@ -146,4 +190,21 @@ export class UsersService {
       HttpStatus.BAD_REQUEST,
     );
   }
+}
+
+function nicknameTaken(): AppException {
+  return new AppException(
+    'NICKNAME_TAKEN',
+    '이미 사용 중인 닉네임이에요.',
+    HttpStatus.CONFLICT,
+  );
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === UNIQUE_VIOLATION
+  );
 }

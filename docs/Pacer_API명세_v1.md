@@ -80,7 +80,22 @@
 }
 ```
 - Response 200: `{ "onboardingCompleted": true }`
-- 에러: 422(닉네임 빈값), 400(필수 동의 누락)
+- 에러: 422 `INVALID_NICKNAME`(규칙 위반), 409 `NICKNAME_TAKEN`(중복), 400 `AGREEMENT_REQUIRED`(필수 동의 누락)
+
+**닉네임 규칙 (계약)**
+- 허용 문자: 한글 완성형 · 영문 · 숫자 · 이모지
+- 길이: **2~12자** — 이모지는 grapheme cluster 기준 1자(👨‍👩‍👧‍👦 · 👍🏽 · 🇰🇷 각 1자)
+- 불가: 공백, 특수문자, 자음/모음 단독(ㅋㅋ·ㅜㅜ)
+- 저장 전 **NFC 정규화 + trim**
+- **중복 불가** — 대소문자를 무시하고 비교
+
+### GET /users/nickname/availability
+닉네임 사용 가능 여부 (온보딩 실시간 확인).
+
+- Query: `?nickname=승욱`
+- Response 200: `{ "nickname": "승욱", "available": true }`
+- 에러: 422 `INVALID_NICKNAME` (형식이 어긋나면 중복을 보기 전에 막는다)
+- 비고: 본인이 이미 쓰는 닉네임은 `available: true`
 - US: US-1.2, US-1.3
 
 ### GET /users/me
@@ -247,6 +262,32 @@
 
 ---
 
+## 5B. Legal (약관·처리방침)
+
+가입 전에도 읽을 수 있어야 하므로 **인증 불필요**.
+
+### GET /legal
+- Response 200: 문서 목록 (`terms`, `privacy`) — 각 항목은 아래 문서와 동일한 형태
+
+### GET /legal/{type}
+`type` = terms | privacy
+
+- Response 200:
+```json
+{
+  "type": "privacy",
+  "title": "개인정보 처리방침",
+  "version": "0.1",
+  "effectiveDate": "2026-08-15",
+  "sections": [ { "heading": "1. 수집하는 개인정보 항목", "body": "..." } ]
+}
+```
+- 에러: 404 `LEGAL_DOCUMENT_NOT_FOUND`
+- 비고: `version`은 동의 이력과 대조할 수 있게 함께 내려준다
+- US: US-1.3
+
+---
+
 ## 6. Growth
 
 ### GET /growth/summary
@@ -323,7 +364,9 @@ data: {"code":"...","message":"..."}
 | Auth | POST /auth/refresh · logout | 1.1 |
 | Users | POST /users/onboarding | 1.2, 1.3 |
 | Users | GET·PATCH·DELETE /users/me | 5·6·7 |
+| Users | GET /users/nickname/availability | 1.2 |
 | Jobs | GET /jobs/categories | 2.1a |
+| Legal | GET /legal · GET /legal/{type} | 1.3 |
 | Interviews | POST /interviews | 2.x, 3.1 |
 | Interviews | POST /interviews/{id}/answer (SSE) | 3.1, 3.2, 6.1 |
 | Interviews | POST /interviews/{id}/skip·pause·resume | 3.3, 3.4 |
@@ -336,7 +379,31 @@ data: {"code":"...","message":"..."}
 
 ## 10. 인증·권한 정리
 
-- 공개: `POST /auth/login/*`, `GET /jobs/categories`
+- 공개: `POST /auth/login/*`, `GET /jobs/categories`, `GET /legal*`, `GET /health`
 - 인증 필요: 그 외 전부
 - Pro 전용: 없음(무료도 전 기능 이용, 단 한도 제한) — 한도 초과 지점에서만 402
 - 리소스 소유권: interviews/{id} 등은 `user_id` 일치 검증 (타인 데이터 접근 403)
+
+---
+
+## 11. Phase A 구현 노트 (Interviews)
+
+> Phase A(클로즈드 베타) 구현에서 확정된 사항. Phase B/P1에서 이 절을 걷어낸다.
+
+### 요청 필드 (POST /interviews)
+- 받는 값: `jobSource(paste|template)` · `jobPostingText` · `jobRoleId` · `customRole` · `applicantInfo` · `resumeRef` · `interviewType(general|pressure)` · `difficulty` · `language(ko)` · `questionCount(3~10)` · `showScore`
+- **받지 않는 값(P1)**: `persona`, `realtimeFeedback`, `language=en`, `jobSource=url` → 전송 시 400
+- 검증 실패 코드: `JOB_POSTING_REQUIRED` · `JOB_ROLE_REQUIRED` · `JOB_ROLE_NOT_FOUND` (422)
+
+### 응답 보강 (명세 예시에 필드 추가)
+- `POST /interviews/{id}/skip` → `{ next, progress, done }` — `done=true`면 남은 기본 질문 없음(→ complete 유도), 이때 `next=null`
+- `POST /interviews/{id}/resume` → `{ status, progress, messages }` — `messages`는 최근 발화 6개
+- `GET /interviews/{id}` → `session`에 `role`(직무명)·`progress` 포함, 모범답안은 해당 기본 질문 메시지의 `feedback.modelAnswer`로 붙는다
+- `GET /interviews` → `items[].score`는 미완료 면접이면 `null`, 커서는 마지막 항목의 세션 id
+
+### 동작 규약
+- **한도**: 기본 질문마다 사용량을 카운트하되 Phase A는 **402를 반환하지 않는다**(페이월 미노출). 꼬리질문은 카운트 제외
+- **꼬리질문**: 같은 기본 질문당 최대 2회
+- **종합 점수**: LLM 값을 신뢰하지 않고 서버가 `Σ(항목 점수 × 직무 가중치)`로 재계산해 저장
+- **complete 멱등**: 이미 종료된 세션은 저장된 리포트를 그대로 200으로 반환
+- **에러 코드**: `SESSION_NOT_FOUND`(404) · `INTERVIEW_FORBIDDEN`(403) · `SESSION_PAUSED`/`SESSION_COMPLETED`(409) · `QUESTION_GENERATION_FAILED`(503)

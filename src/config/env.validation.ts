@@ -29,6 +29,17 @@ export const envValidationSchema = Joi.object({
   // 사용량 — Phase A는 페이월 미노출이라 넉넉히 두고, Phase B에서 20으로 조인다.
   FREE_DAILY_QUESTION_LIMIT: Joi.number().default(20),
 
+  // 보안 — CORS 화이트리스트(쉼표 구분), 요청 상한(창 초 / 창당 요청 수)
+  CORS_ORIGINS: Joi.string().allow('').optional(),
+  // Nginx 등 리버스 프록시 뒤에 둘 때만 'true' (X-Forwarded-For 신뢰)
+  TRUST_PROXY: Joi.string().valid('true', 'false').default('false'),
+  THROTTLE_TTL: Joi.number().default(60),
+  THROTTLE_LIMIT: Joi.number().default(120),
+  THROTTLE_AUTH_LIMIT: Joi.number().default(10),
+
+  // 개인정보 — 공고 원문·자소서 보관 기간(일). 지나면 파기 배치가 지운다.
+  SENSITIVE_RETENTION_DAYS: Joi.number().default(90),
+
   // 마일스톤 2 (LLM 프록시)
   LLM_API_KEY: Joi.string().allow('').optional(),
 });

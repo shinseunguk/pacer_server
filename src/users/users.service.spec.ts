@@ -19,19 +19,39 @@ const USAGE_SUMMARY = {
   remaining: 17,
 };
 
+interface QueryBuilder {
+  where: jest.Mock;
+  andWhere: jest.Mock;
+  getCount: jest.Mock;
+}
+
 interface Repo {
   findOne: jest.Mock;
   create: jest.Mock;
   save: jest.Mock;
   softDelete: jest.Mock;
+  createQueryBuilder: jest.Mock;
+  /** 닉네임 중복 검사에 쓰이는 쿼리빌더 — 테스트에서 결과를 조작한다. */
+  queryBuilder: QueryBuilder;
 }
 
 function createRepo(): Repo {
+  // 기본값: 같은 닉네임을 쓰는 다른 사용자가 없다.
+  const queryBuilder: QueryBuilder = {
+    where: jest.fn(),
+    andWhere: jest.fn(),
+    getCount: jest.fn().mockResolvedValue(0),
+  };
+  queryBuilder.where.mockReturnValue(queryBuilder);
+  queryBuilder.andWhere.mockReturnValue(queryBuilder);
+
   return {
     findOne: jest.fn(),
     create: jest.fn((v: Record<string, unknown>) => v),
     save: jest.fn((v: Record<string, unknown>) => Promise.resolve(v)),
     softDelete: jest.fn().mockResolvedValue(undefined),
+    createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+    queryBuilder,
   };
 }
 
@@ -126,12 +146,54 @@ describe('UsersService', () => {
       expect(userRepo.save).not.toHaveBeenCalled();
     });
 
-    it('닉네임이 20자를 넘으면 422', async () => {
+    it('닉네임이 12자를 넘으면 422', async () => {
       userRepo.findOne.mockResolvedValue(activeUser());
 
       await expectStatus(
-        service.completeOnboarding('user-1', 'a'.repeat(21), ALL_AGREED),
+        service.completeOnboarding('user-1', 'a'.repeat(13), ALL_AGREED),
         HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    });
+
+    it('규칙에 없는 문자가 섞이면 422', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+
+      await expectStatus(
+        service.completeOnboarding('user-1', '승욱!', ALL_AGREED),
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('이미 쓰는 닉네임이면 409', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      userRepo.queryBuilder.getCount.mockResolvedValue(1);
+
+      await expectStatus(
+        service.completeOnboarding('user-1', '승욱', ALL_AGREED),
+        HttpStatus.CONFLICT,
+      );
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('중복 검사에서 본인은 제외한다', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+
+      await service.completeOnboarding('user-1', '승욱', ALL_AGREED);
+
+      expect(userRepo.queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('user.id <>'),
+        { userId: 'user-1' },
+      );
+    });
+
+    it('저장 직전에 선점당하면(유니크 위반) 409로 바꾼다', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      userRepo.save.mockRejectedValueOnce({ code: '23505' });
+
+      await expectStatus(
+        service.completeOnboarding('user-1', '승욱', ALL_AGREED),
+        HttpStatus.CONFLICT,
       );
     });
 
@@ -170,6 +232,30 @@ describe('UsersService', () => {
       userRepo.findOne.mockResolvedValue(null);
 
       await expectStatus(service.getProfile('user-1'), HttpStatus.NOT_FOUND);
+    });
+  });
+
+  describe('checkNicknameAvailability', () => {
+    it('아무도 안 쓰면 사용 가능으로 알려준다', async () => {
+      await expect(
+        service.checkNicknameAvailability('  승욱  ', 'user-1'),
+      ).resolves.toEqual({ nickname: '승욱', available: true });
+    });
+
+    it('이미 쓰는 닉네임이면 사용 불가', async () => {
+      userRepo.queryBuilder.getCount.mockResolvedValue(1);
+
+      await expect(
+        service.checkNicknameAvailability('승욱', 'user-1'),
+      ).resolves.toEqual({ nickname: '승욱', available: false });
+    });
+
+    it('형식이 어긋나면 중복을 보기 전에 422', async () => {
+      await expectStatus(
+        service.checkNicknameAvailability('ㅋㅋ', 'user-1'),
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+      expect(userRepo.queryBuilder.getCount).not.toHaveBeenCalled();
     });
   });
 

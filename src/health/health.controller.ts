@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Public } from '../auth/decorators/public.decorator';
@@ -12,6 +13,8 @@ interface HealthResult {
 }
 
 @ApiTags('health')
+// 로드밸런서·모니터링 프로브가 상한에 걸리면 안 된다.
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(
