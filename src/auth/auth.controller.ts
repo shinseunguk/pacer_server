@@ -12,6 +12,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AppException } from '../common/exceptions/app.exception';
 import { AuthService, LoginResult } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -25,7 +26,20 @@ import {
 import { AuthUser } from './strategies/jwt.strategy';
 import { TokenPair } from './token.service';
 
+/**
+ * 인증 경로는 크리덴셜 스터핑 대상이라 전역 상한보다 더 조인다.
+ * 데코레이터는 import 시점에 평가되므로 ConfigService 대신 env를 직접 읽는다.
+ */
+const AUTH_WINDOW_MS = 60_000;
+const AUTH_THROTTLE = {
+  default: {
+    limit: Number(process.env.THROTTLE_AUTH_LIMIT ?? 10),
+    ttl: AUTH_WINDOW_MS,
+  },
+};
+
 @ApiTags('auth')
+@Throttle(AUTH_THROTTLE)
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
