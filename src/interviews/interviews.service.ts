@@ -29,10 +29,7 @@ import { MessageFeedback } from './entities/message-feedback.entity';
 import { SessionEvaluation } from './entities/session-evaluation.entity';
 import { SessionFeedback } from './entities/session-feedback.entity';
 import { QuestionPlanStore } from './question-plan.store';
-import {
-  FeedbackRating,
-  SubmitFeedbackDto,
-} from './dto/session-feedback.dto';
+import { FeedbackRating, SubmitFeedbackDto } from './dto/session-feedback.dto';
 
 /** 같은 기본 질문에서 파고들 수 있는 최대 꼬리질문 수 (프롬프트 설계 §4). */
 export const MAX_FOLLOW_UP = 2;
