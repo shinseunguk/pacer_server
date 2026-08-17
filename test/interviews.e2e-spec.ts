@@ -308,6 +308,37 @@ describe('Interviews (e2e)', () => {
       .expect(400);
   });
 
+  it('목록에 세션 상태가 담겨 이어하기를 판단할 수 있다', async () => {
+    const created = await createSession();
+
+    const listing = await request(app.getHttpServer())
+      .get('/v1/interviews?limit=20')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const found = (
+      listing.body as { items: { id: string; status: string }[] }
+    ).items.find((item) => item.id === created.sessionId);
+    expect(found?.status).toBe('in_progress');
+
+    // 종료하면 목록 상태도 바뀐다.
+    await answer(created.sessionId);
+    await request(app.getHttpServer())
+      .post(`/v1/interviews/${created.sessionId}/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const after = await request(app.getHttpServer())
+      .get('/v1/interviews?limit=20')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const completed = (
+      after.body as { items: { id: string; status: string }[] }
+    ).items.find((item) => item.id === created.sessionId);
+    expect(completed?.status).toBe('completed');
+  });
+
   it('남의 면접에는 접근할 수 없다(403)', async () => {
     const created = await createSession();
 

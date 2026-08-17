@@ -128,6 +128,9 @@ export interface InterviewListItem {
   id: string;
   role: string | null;
   interviewType: string;
+
+  /// 이어하기 진입 여부를 앱이 판단하려면 상태가 필요하다.
+  status: string;
   score: number | null;
   passResult: string | null;
   createdAt: Date;
@@ -489,6 +492,7 @@ export class InterviewsService {
         id: session.id,
         role: session.jobRole?.name ?? session.customRole,
         interviewType: session.interviewType,
+        status: session.status,
         score: session.finalScore,
         passResult: session.passResult,
         createdAt: session.createdAt,
