@@ -7,10 +7,12 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
+import { NicknameAvailabilityQueryDto } from './dto/nickname-availability.dto';
 import { OnboardingDto } from './dto/onboarding.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserProfile, UsersService } from './users.service';
@@ -32,6 +34,18 @@ export class UsersController {
       user.userId,
       dto.nickname,
       dto.agreements,
+    );
+  }
+
+  @Get('nickname/availability')
+  @ApiOperation({ summary: '닉네임 사용 가능 여부 확인 (온보딩 실시간 검사)' })
+  checkNickname(
+    @CurrentUser() user: AuthUser,
+    @Query() query: NicknameAvailabilityQueryDto,
+  ): Promise<{ nickname: string; available: boolean }> {
+    return this.usersService.checkNicknameAvailability(
+      query.nickname,
+      user.userId,
     );
   }
 
