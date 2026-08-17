@@ -606,7 +606,13 @@ describe('InterviewsService', () => {
       );
       expect(result.items).toHaveLength(2);
       expect(result.items[0]).toEqual(
-        expect.objectContaining({ id: 's1', role: '백엔드', score: 80 }),
+        expect.objectContaining({
+          id: 's1',
+          role: '백엔드',
+          score: 80,
+          // 앱이 이어하기 진입을 판단하려면 상태가 필요하다.
+          status: 'in_progress',
+        }),
       );
       expect(result.nextCursor).toBe('s2');
     });

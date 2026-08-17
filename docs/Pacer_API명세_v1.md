@@ -265,11 +265,14 @@
 ```json
 {
   "items": [
-    { "id": "uuid", "role": "백엔드", "interviewType": "pressure", "score": 78, "passResult": "pass", "createdAt": "..." }
+    { "id": "uuid", "role": "백엔드", "interviewType": "pressure", "status": "completed",
+      "score": 78, "passResult": "pass", "createdAt": "..." }
   ],
   "nextCursor": "uuid"
 }
 ```
+- `status`: in_progress | paused | completed — 앱이 이어하기 진입을 판단하는 데 쓴다
+- `role`은 직무를 고르지 않은 면접(공고 붙여넣기)이면 `null`
 - US: US-5.1
 
 ---
