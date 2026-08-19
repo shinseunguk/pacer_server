@@ -38,7 +38,10 @@ interface ErrorBody {
   error: { code: string; message: string };
 }
 
-const QUESTION_COUNT = 3;
+/** 직무 질문 수. 하한이 5로 올라갔다 (프롬프트 설계 §3, ADR 0006). */
+const QUESTION_COUNT = 5;
+/** 도입 질문(자기소개·지원동기) — 문항 수에 포함되지 않는다. */
+const INTRO_QUESTION_COUNT = 2;
 const ANSWER =
   '3년차 백엔드 개발자로 결제 API의 응답 지연을 40% 줄인 경험이 있습니다.';
 
@@ -114,9 +117,10 @@ describe('Interviews (e2e)', () => {
     const body = await createSession();
 
     expect(body.status).toBe('in_progress');
-    expect(body.progress).toEqual({ current: 1, total: QUESTION_COUNT });
+    // 첫 질문은 도입 질문이라 진행도는 아직 0이다.
+    expect(body.progress).toEqual({ current: 0, total: QUESTION_COUNT });
     expect(body.firstQuestion.seq).toBe(1);
-    expect(body.firstQuestion.type).toBe('base_question');
+    expect(body.firstQuestion.type).toBe('intro_question');
     expect(body.firstQuestion.content).toBeTruthy();
   });
 
@@ -153,7 +157,8 @@ describe('Interviews (e2e)', () => {
     const created = await createSession();
 
     let last: SkipBody | null = null;
-    for (let i = 0; i < QUESTION_COUNT; i += 1) {
+    // 도입 질문까지 모두 넘겨야 종료에 닿는다.
+    for (let i = 0; i < INTRO_QUESTION_COUNT + QUESTION_COUNT; i += 1) {
       const res = await request(app.getHttpServer())
         .post(`/v1/interviews/${created.sessionId}/skip`)
         .set('Authorization', `Bearer ${token}`)
@@ -196,6 +201,13 @@ describe('Interviews (e2e)', () => {
 
   it('면접을 끝내면 가중치 리포트가 생성되고 재열람·목록에 반영된다', async () => {
     const created = await createSession();
+    // 모범답안은 직무 질문에만 붙으므로 도입 질문을 먼저 넘긴다 (ADR 0006).
+    for (let i = 0; i < INTRO_QUESTION_COUNT; i += 1) {
+      await request(app.getHttpServer())
+        .post(`/v1/interviews/${created.sessionId}/skip`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+    }
     await answer(created.sessionId);
 
     const completed = await request(app.getHttpServer())

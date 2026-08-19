@@ -34,6 +34,13 @@ import { FeedbackRating, SubmitFeedbackDto } from './dto/session-feedback.dto';
 /** 같은 기본 질문에서 파고들 수 있는 최대 꼬리질문 수 (프롬프트 설계 §4). */
 export const MAX_FOLLOW_UP = 2;
 
+/** 면접관이 던지는 발화 종류 (답변·스킵과 구분). */
+const QUESTION_TYPES = new Set([
+  'intro_question',
+  'base_question',
+  'follow_up',
+]);
+
 /** 이어하기 시 클라이언트에 돌려줄 최근 발화 수. */
 const RESUME_CONTEXT_SIZE = 6;
 
@@ -196,15 +203,22 @@ export class InterviewsService {
 
     const message = await this.appendMessage(session, 1, {
       role: 'interviewer',
-      type: 'base_question',
+      type: first.kind,
       content: first.content,
     });
-    await this.usage.consumeBaseQuestion(userId);
+    // 도입 질문은 사용량에 넣지 않는다 — 한도는 직무 질문 기준이다.
+    if (first.kind === 'base_question') {
+      await this.usage.consumeBaseQuestion(userId);
+    }
 
     return {
       sessionId: session.id,
       status: session.status,
-      progress: { current: 1, total: session.questionCount },
+      // 도입 질문으로 시작하면 진행도는 아직 0이다 (API 명세 §POST /interviews).
+      progress: {
+        current: first.kind === 'base_question' ? 1 : 0,
+        total: session.questionCount,
+      },
       firstQuestion: toMessageView(message),
     };
   }
@@ -516,19 +530,29 @@ export class InterviewsService {
       };
     }
 
-    const question = await this.takeNextQuestion(session, askedCount);
+    const question = await this.takeNextQuestion(
+      session,
+      countAskedQuestions(messages),
+    );
     const message = await this.appendMessage(session, nextSeq(messages), {
       role: 'interviewer',
-      type: 'base_question',
+      type: question.kind,
       content: question.content,
     });
-    // 꼬리질문은 제외하고 기본 질문만 사용량에 반영한다.
-    await this.usage.consumeBaseQuestion(session.user.id);
+
+    const isBase = question.kind === 'base_question';
+    // 꼬리질문·도입 질문은 제외하고 직무 질문만 사용량에 반영한다.
+    if (isBase) {
+      await this.usage.consumeBaseQuestion(session.user.id);
+    }
 
     return {
       kind: 'message',
       message: toMessageView(message),
-      progress: { current: askedCount + 1, total: session.questionCount },
+      progress: {
+        current: isBase ? askedCount + 1 : askedCount,
+        total: session.questionCount,
+      },
     };
   }
 
@@ -537,6 +561,12 @@ export class InterviewsService {
     messages: InterviewMessage[],
     answer: string,
   ): Promise<{ action: 'next' } | { action: 'follow_up'; content: string }> {
+    // 도입 질문(자기소개·지원동기)은 워밍업이라 파고들지 않는다 (프롬프트 설계 §4).
+    // 엔진 호출 자체를 건너뛰어 비용도 아낀다.
+    if (lastQuestion(messages)?.type === 'intro_question') {
+      return { action: 'next' };
+    }
+
     const baseQuestion = lastBaseQuestion(messages);
     if (!baseQuestion?.content) return { action: 'next' };
 
@@ -561,7 +591,7 @@ export class InterviewsService {
    */
   private async takeNextQuestion(
     session: InterviewSession,
-    askedCount: number,
+    askedQuestionCount: number,
   ): Promise<GeneratedQuestion> {
     const cached = await this.planStore.get(session.id);
     if (cached && cached.length > 0) {
@@ -570,17 +600,23 @@ export class InterviewsService {
       return next;
     }
 
+    // 플랜에는 도입 질문도 섞여 있으므로 직무 질문 수가 아니라
+    // **던진 질문 전체 수**로 잘라야 순서가 어긋나지 않는다.
     const regenerated = await this.generatePlan(session);
-    const remaining = regenerated.slice(askedCount);
+    const remaining = regenerated.slice(askedQuestionCount);
     const [next, ...rest] = remaining.length > 0 ? remaining : regenerated;
     await this.planStore.save(session.id, rest);
     return next;
   }
 
+  /**
+   * 도입 질문 2개 + 직무 질문 N개를 **던질 순서대로** 이어붙인 플랜.
+   * 도입 질문은 문항 수·진행도·평가에서 빠지지만 대화 순서상 앞에 온다 (프롬프트 설계 §3).
+   */
   private async generatePlan(
     session: InterviewSession,
   ): Promise<GeneratedQuestion[]> {
-    const questions = await this.engine.generateQuestions({
+    const set = await this.engine.generateQuestions({
       jobPostingText: session.jobPostingText,
       applicantInfo: session.applicantInfo,
       jobCategory: this.categoryNameOf(session),
@@ -591,7 +627,9 @@ export class InterviewsService {
       questionCount: session.questionCount,
     });
 
-    if (questions.length === 0) {
+    const questions = [...set.introQuestions, ...set.questions];
+
+    if (set.questions.length === 0) {
       throw new AppException(
         'QUESTION_GENERATION_FAILED',
         '질문을 만들지 못했어요. 잠시 후 다시 시도해주세요.',
@@ -806,6 +844,23 @@ function countFollowUpsAfter(
 ): number {
   return messages.filter(
     (message) => message.type === 'follow_up' && message.seq > baseSeq,
+  ).length;
+}
+
+/** 종류를 가리지 않고 마지막으로 던진 질문 (도입·직무·꼬리질문). */
+function lastQuestion(
+  messages: InterviewMessage[],
+): InterviewMessage | undefined {
+  return [...messages]
+    .reverse()
+    .find((message) => QUESTION_TYPES.has(message.type));
+}
+
+/** 플랜에서 이미 소비한 질문 수 — 도입 질문을 포함한다(꼬리질문은 플랜 밖). */
+function countAskedQuestions(messages: InterviewMessage[]): number {
+  return messages.filter(
+    (message) =>
+      message.type === 'intro_question' || message.type === 'base_question',
   ).length;
 }
 
