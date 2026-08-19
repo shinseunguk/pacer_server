@@ -16,8 +16,15 @@ export const INTERVIEW_TYPES = ['general', 'pressure'] as const;
 export const DIFFICULTIES = ['low', 'mid', 'high'] as const;
 export const LANGUAGES = ['ko'] as const;
 
-export const MIN_QUESTION_COUNT = 3;
-export const MAX_QUESTION_COUNT = 10;
+/**
+ * 직무 질문 수의 범위. 도입 질문(자기소개·지원동기) 2개는 여기 포함되지 않는다
+ * (프롬프트 설계 §3).
+ *
+ * 하한 5: 3~4문항은 면접이라 부르기 어렵다.
+ * 상한 15: 텍스트 채팅은 말보다 느려 그 이상은 완주율이 무너진다(MVP KPI §6).
+ */
+export const MIN_QUESTION_COUNT = 5;
+export const MAX_QUESTION_COUNT = 15;
 
 /**
  * 면접 세션 생성 입력 (API 명세 §5 POST /interviews).

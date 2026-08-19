@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   EvaluationContext,
-  GeneratedQuestion,
+  GeneratedQuestionSet,
   InterviewEngine,
   InterviewEvaluation,
   NextTurnContext,
@@ -19,19 +19,36 @@ import { clampScore, CRITERIA } from './weight-presets';
 export class StubInterviewEngine implements InterviewEngine {
   private readonly logger = new Logger(StubInterviewEngine.name);
 
-  generateQuestions(ctx: QuestionSetContext): Promise<GeneratedQuestion[]> {
+  generateQuestions(ctx: QuestionSetContext): Promise<GeneratedQuestionSet> {
     this.logger.warn(
       'StubInterviewEngine으로 질문을 생성합니다 (마일스톤 2에서 LLM으로 교체).',
     );
 
+    const introQuestions = this.introPool(ctx).map((content, index) => ({
+      order: index + 1,
+      kind: 'intro_question' as const,
+      content,
+      intent: index === 0 ? '도입' : '지원동기',
+    }));
+
     const pool = this.questionPool(ctx);
     const questions = Array.from({ length: ctx.questionCount }, (_, index) => ({
       order: index + 1,
+      kind: 'base_question' as const,
       content: this.applyTone(pool[index % pool.length], ctx.interviewType),
-      intent: index === 0 ? '도입·기본 파악' : '직무 역량 확인',
+      intent: '직무 역량 확인',
     }));
 
-    return Promise.resolve(questions);
+    return Promise.resolve({ introQuestions, questions });
+  }
+
+  /** 도입 질문은 워밍업이라 톤을 입히지 않고 표준 문구를 쓴다 (프롬프트 설계 §3). */
+  private introPool(ctx: QuestionSetContext): string[] {
+    const role = ctx.jobRole ?? ctx.jobCategory ?? '지원 직무';
+    return [
+      '자기소개 부탁드립니다.',
+      `${role} 직무에 지원하신 이유를 말씀해주세요.`,
+    ];
   }
 
   decideNextTurn(ctx: NextTurnContext): Promise<NextTurnDecision> {
@@ -104,8 +121,6 @@ export class StubInterviewEngine implements InterviewEngine {
   private questionPool(ctx: QuestionSetContext): string[] {
     const role = ctx.jobRole ?? ctx.jobCategory ?? '지원 직무';
     const pool = [
-      '자기소개 부탁드립니다.',
-      `${role} 직무에 지원하신 이유와, 본인이 적합하다고 생각하는 근거를 말씀해주세요.`,
       `${role} 업무에서 가장 어려웠던 문제와 해결 과정을 구체적으로 설명해주세요.`,
       '협업 과정에서 의견이 충돌했을 때 어떻게 조율했는지 사례를 들어 말씀해주세요.',
       '최근 3년 내 성과 중 수치로 설명할 수 있는 것을 하나 골라 설명해주세요.',

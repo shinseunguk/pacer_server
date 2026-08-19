@@ -127,11 +127,25 @@ describe('InterviewsService', () => {
     };
     usage = { consumeBaseQuestion: jest.fn().mockResolvedValue(1) };
     engine = {
-      generateQuestions: jest.fn().mockResolvedValue([
-        { order: 1, content: '자기소개 부탁드립니다.' },
-        { order: 2, content: '두 번째 질문입니다.' },
-        { order: 3, content: '세 번째 질문입니다.' },
-      ]),
+      generateQuestions: jest.fn().mockResolvedValue({
+        introQuestions: [
+          {
+            order: 1,
+            kind: 'intro_question',
+            content: '자기소개 부탁드립니다.',
+          },
+          {
+            order: 2,
+            kind: 'intro_question',
+            content: '지원 이유를 말씀해주세요.',
+          },
+        ],
+        questions: [
+          { order: 1, kind: 'base_question', content: '첫 번째 질문입니다.' },
+          { order: 2, kind: 'base_question', content: '두 번째 질문입니다.' },
+          { order: 3, kind: 'base_question', content: '세 번째 질문입니다.' },
+        ],
+      }),
       decideNextTurn: jest.fn().mockResolvedValue({ action: 'next' }),
       evaluate: jest.fn(),
     };
@@ -154,14 +168,23 @@ describe('InterviewsService', () => {
     it('세션과 첫 질문을 만들고 남은 질문은 플랜에 보관한다', async () => {
       const result = await service.create(USER_ID, CREATE_DTO);
 
-      expect(result.progress).toEqual({ current: 1, total: 3 });
+      // 첫 질문은 도입 질문이라 진행도는 아직 0이다 (프롬프트 설계 §3).
+      expect(result.progress).toEqual({ current: 0, total: 3 });
       expect(result.firstQuestion.seq).toBe(1);
+      expect(result.firstQuestion.type).toBe('intro_question');
       expect(result.firstQuestion.content).toBe('자기소개 부탁드립니다.');
       expect(planStore.save).toHaveBeenCalledWith(expect.any(String), [
-        { order: 2, content: '두 번째 질문입니다.' },
-        { order: 3, content: '세 번째 질문입니다.' },
+        {
+          order: 2,
+          kind: 'intro_question',
+          content: '지원 이유를 말씀해주세요.',
+        },
+        { order: 1, kind: 'base_question', content: '첫 번째 질문입니다.' },
+        { order: 2, kind: 'base_question', content: '두 번째 질문입니다.' },
+        { order: 3, kind: 'base_question', content: '세 번째 질문입니다.' },
       ]);
-      expect(usage.consumeBaseQuestion).toHaveBeenCalledWith(USER_ID);
+      // 도입 질문은 한도를 소모하지 않는다.
+      expect(usage.consumeBaseQuestion).not.toHaveBeenCalled();
     });
 
     it('MVP 제외 항목(페르소나·실시간 피드백)은 꺼진 상태로 저장한다', async () => {
@@ -239,8 +262,8 @@ describe('InterviewsService', () => {
 
     it('다음 결정이면 플랜에서 기본 질문을 꺼내고 사용량을 늘린다', async () => {
       planStore.get.mockResolvedValue([
-        { order: 2, content: '두 번째 질문입니다.' },
-        { order: 3, content: '세 번째 질문입니다.' },
+        { order: 2, kind: 'base_question', content: '두 번째 질문입니다.' },
+        { order: 3, kind: 'base_question', content: '세 번째 질문입니다.' },
       ]);
 
       const turn = await service.submitAnswer(
@@ -256,7 +279,7 @@ describe('InterviewsService', () => {
       expect(turn.progress).toEqual({ current: 2, total: 3 });
       expect(usage.consumeBaseQuestion).toHaveBeenCalledWith(USER_ID);
       expect(planStore.save).toHaveBeenCalledWith(SESSION_ID, [
-        { order: 3, content: '세 번째 질문입니다.' },
+        { order: 3, kind: 'base_question', content: '세 번째 질문입니다.' },
       ]);
     });
 
@@ -313,6 +336,16 @@ describe('InterviewsService', () => {
 
     it('플랜 캐시가 비면 다시 생성해 남은 질문을 사용한다', async () => {
       planStore.get.mockResolvedValue(null);
+      // 재생성 플랜은 **던진 질문 전체 수**로 자른다 — 도입 질문도 세야 순서가 맞는다.
+      messageSeq = 0;
+      messageRepo.find.mockResolvedValue([
+        message({ type: 'intro_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: '자기소개입니다.' }),
+        message({ type: 'intro_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: '지원 이유입니다.' }),
+        message({ type: 'base_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: '이전 답변입니다.' }),
+      ]);
 
       const turn = await service.submitAnswer(
         USER_ID,
@@ -323,6 +356,77 @@ describe('InterviewsService', () => {
       expect(engine.generateQuestions).toHaveBeenCalled();
       if (turn.kind !== 'message') throw new Error('기대와 다른 결과');
       expect(turn.message.content).toBe('두 번째 질문입니다.');
+      expect(turn.message.type).toBe('base_question');
+    });
+
+    it('도입 질문 답변에는 꼬리질문을 붙이지 않고 엔진도 부르지 않는다', async () => {
+      messageSeq = 0;
+      messageRepo.find.mockResolvedValue([
+        message({ type: 'intro_question', role: 'interviewer' }),
+      ]);
+      planStore.get.mockResolvedValue([
+        {
+          order: 2,
+          kind: 'intro_question',
+          content: '지원 이유를 말씀해주세요.',
+        },
+      ]);
+
+      const turn = await service.submitAnswer(
+        USER_ID,
+        SESSION_ID,
+        '자기소개입니다',
+      );
+
+      // 워밍업이라 파고들지 않는다 (프롬프트 설계 §4). 호출 자체를 건너뛴다.
+      expect(engine.decideNextTurn).not.toHaveBeenCalled();
+      if (turn.kind !== 'message') throw new Error('기대와 다른 결과');
+      expect(turn.message.type).toBe('intro_question');
+    });
+
+    it('도입 질문은 진행도와 사용량 어디에도 세지 않는다', async () => {
+      messageSeq = 0;
+      messageRepo.find.mockResolvedValue([
+        message({ type: 'intro_question', role: 'interviewer' }),
+      ]);
+      planStore.get.mockResolvedValue([
+        {
+          order: 2,
+          kind: 'intro_question',
+          content: '지원 이유를 말씀해주세요.',
+        },
+      ]);
+
+      const turn = await service.submitAnswer(
+        USER_ID,
+        SESSION_ID,
+        '자기소개입니다',
+      );
+
+      if (turn.kind !== 'message') throw new Error('기대와 다른 결과');
+      expect(turn.progress).toEqual({ current: 0, total: 3 });
+      expect(usage.consumeBaseQuestion).not.toHaveBeenCalled();
+    });
+
+    it('직무 질문이 questionCount만큼 나오면 종료한다 (도입 질문은 세지 않는다)', async () => {
+      messageSeq = 0;
+      messageRepo.find.mockResolvedValue([
+        message({ type: 'intro_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: '자기소개' }),
+        message({ type: 'intro_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: '지원 이유' }),
+        message({ type: 'base_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: 'a' }),
+        message({ type: 'base_question', role: 'interviewer' }),
+        message({ type: 'answer', role: 'user', content: 'b' }),
+        message({ type: 'base_question', role: 'interviewer' }),
+      ]);
+
+      const turn = await service.submitAnswer(USER_ID, SESSION_ID, 'c');
+
+      // 도입 2 + 직무 3이지만 questionCount=3이므로 직무 3개로 종료한다.
+      expect(turn.kind).toBe('interview_done');
+      expect(turn.progress).toEqual({ current: 3, total: 3 });
     });
 
     it('일시정지된 면접이면 409', async () => {
@@ -370,7 +474,7 @@ describe('InterviewsService', () => {
     it('미응답을 기록하고 다음 질문을 반환한다', async () => {
       messageRepo.find.mockResolvedValue(conversation());
       planStore.get.mockResolvedValue([
-        { order: 2, content: '두 번째 질문입니다.' },
+        { order: 2, kind: 'base_question', content: '두 번째 질문입니다.' },
       ]);
 
       const result = await service.skip(USER_ID, SESSION_ID);

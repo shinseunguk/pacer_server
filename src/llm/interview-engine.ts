@@ -21,11 +21,26 @@ export interface QuestionSetContext {
   questionCount: number;
 }
 
+/** 도입 질문은 워밍업이라 문항 수·평가에서 빠진다 (프롬프트 설계 §3). */
+export type QuestionKind = 'intro_question' | 'base_question';
+
 export interface GeneratedQuestion {
-  /** 질문 플랜 내 순번 (1..questionCount). 메시지 seq와는 별개. */
+  /** 질문 플랜 내 순번. 종류별로 각각 1부터 센다. 메시지 seq와는 별개. */
   order: number;
+  kind: QuestionKind;
   content: string;
   intent?: string;
+}
+
+/**
+ * 질문 생성 결과 (프롬프트 설계 §3).
+ *
+ * - `introQuestions`: 자기소개·지원동기 2개. **`questionCount`에 포함되지 않는다.**
+ * - `questions`: 직무 질문 정확히 `questionCount`개. 평가 대상은 이쪽뿐이다.
+ */
+export interface GeneratedQuestionSet {
+  introQuestions: GeneratedQuestion[];
+  questions: GeneratedQuestion[];
 }
 
 /** 답변 제출 시 다음 발화 결정 컨텍스트 (프롬프트 설계 §4). */
@@ -80,7 +95,7 @@ export interface InterviewEvaluation {
 }
 
 export interface InterviewEngine {
-  generateQuestions(ctx: QuestionSetContext): Promise<GeneratedQuestion[]>;
+  generateQuestions(ctx: QuestionSetContext): Promise<GeneratedQuestionSet>;
   decideNextTurn(ctx: NextTurnContext): Promise<NextTurnDecision>;
   evaluate(ctx: EvaluationContext): Promise<InterviewEvaluation>;
 }
