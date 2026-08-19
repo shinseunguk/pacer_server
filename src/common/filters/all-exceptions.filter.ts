@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { AppException } from '../exceptions/app.exception';
 
 /** HTTP 상태코드 → 기본 에러 코드 매핑 (AppException이 아닌 경우) */
@@ -41,6 +42,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${body.error.code}: ${body.error.message}`,
         exception instanceof Error ? exception.stack : undefined,
       );
+      // 4xx는 클라이언트 잘못이라 알림 노이즈만 된다 — 5xx만 올린다.
+      // DSN이 없으면 SDK가 초기화되지 않아 이 호출은 no-op이다.
+      Sentry.captureException(exception);
     }
 
     response.status(status).json(body);

@@ -40,6 +40,11 @@ export const envValidationSchema = Joi.object({
   // 개인정보 — 공고 원문·자소서 보관 기간(일). 지나면 파기 배치가 지운다.
   SENSITIVE_RETENTION_DAYS: Joi.number().default(90),
 
+  // 관측 — DSN이 없으면 Sentry를 초기화하지 않는다(로컬/CI 그대로 동작).
+  SENTRY_DSN: Joi.string().allow('').optional(),
+  SENTRY_ENVIRONMENT: Joi.string().allow('').optional(),
+  SENTRY_TRACES_SAMPLE_RATE: Joi.number().min(0).max(1).default(0),
+
   // 마일스톤 2 (LLM 프록시)
   LLM_API_KEY: Joi.string().allow('').optional(),
 });
