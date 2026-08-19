@@ -168,10 +168,16 @@
 {
   "sessionId": "uuid",
   "status": "in_progress",
-  "progress": { "current": 1, "total": 5 },
-  "firstQuestion": { "messageId": "uuid", "seq": 1, "type": "base_question", "content": "자기소개 부탁드립니다." }
+  "progress": { "current": 0, "total": 5 },
+  "firstQuestion": { "messageId": "uuid", "seq": 1, "type": "intro_question", "content": "자기소개 부탁드립니다." }
 }
 ```
+
+> **`progress`는 직무 질문 기준이다.**
+> 도입 질문(자기소개·지원동기, `type: "intro_question"`)은 `current`·`total` 어디에도 세지 않는다.
+> 도입 구간에서는 `current: 0`이고, 첫 직무 질문이 나올 때 `current: 1`이 된다.
+> `total`은 세션 생성 시 요청한 `questionCount`(5~15)와 같다.
+> 근거: `Pacer_AI프롬프트설계_v1.md` §3.
 - 에러: 402(시작 전 한도 소진 → 페이월), 422(입력 누락)
 - US: US-2.1~2.3, US-3.1
 
@@ -245,6 +251,7 @@
 {
   "session": { "id": "uuid", "interviewType": "pressure", "difficulty": "mid", "status": "completed", "createdAt": "..." },
   "messages": [
+    { "seq": 1, "role": "interviewer", "type": "intro_question", "content": "자기소개 부탁드립니다." },
     { "seq": 1, "role": "interviewer", "type": "base_question", "content": "..." },
     { "seq": 2, "role": "user", "type": "answer", "content": "..." },
     { "seq": 3, "role": "interviewer", "type": "follow_up", "parentId": "uuid", "content": "...",

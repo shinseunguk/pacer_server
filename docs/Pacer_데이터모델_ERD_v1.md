@@ -92,7 +92,7 @@
 | session_id | uuid | FK→interview_sessions | |
 | seq | int | NOT NULL | 세션 내 순서 |
 | role | varchar | NOT NULL | interviewer / user |
-| type | varchar | NOT NULL | base_question / follow_up / answer / skip |
+| type | varchar | NOT NULL | intro_question / base_question / follow_up / answer / skip |
 | content | text | NULL | 발화 내용(스킵은 NULL 가능) |
 | parent_id | uuid | FK→interview_messages, NULL | 꼬리질문이 파고든 답변 참조 |
 | created_at | timestamptz | NOT NULL | |
@@ -160,7 +160,7 @@
 | id | uuid | PK | |
 | user_id | uuid | FK→users | |
 | usage_date | date | NOT NULL | KST 기준 날짜 |
-| base_question_count | int | default 0 | 꼬리질문 제외 카운트 |
+| base_question_count | int | default 0 | 직무 질문만 카운트 (꼬리질문·도입 질문 제외) |
 
 - 인덱스: UNIQUE(`user_id`, `usage_date`)
 
@@ -209,7 +209,9 @@
 - session.status: in_progress / paused / completed
 - pass_result: pass / fail
 - message.role: interviewer / user
-- message.type: base_question / follow_up / answer / skip
+- message.type: intro_question / base_question / follow_up / answer / skip
+  - `intro_question`: 자기소개·지원동기. **문항 수·진행도·평가에서 제외**하고 대화록에만 남긴다
+    (`Pacer_AI프롬프트설계_v1.md` §3)
 - criterion: logic / job_fit / structure / keyword
 - subscription.status: active / expired / cancelled / grace
 
