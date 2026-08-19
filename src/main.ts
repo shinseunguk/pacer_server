@@ -1,3 +1,5 @@
+// Sentry 계측은 다른 모듈보다 먼저 걸려야 한다 — 반드시 첫 줄에 둔다.
+import './instrument';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
