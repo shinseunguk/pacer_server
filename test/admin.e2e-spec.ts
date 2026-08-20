@@ -33,6 +33,13 @@ describe('Admin (e2e)', () => {
     await app.init();
 
     adminToken = app.get(ConfigService).get<string>('ADMIN_API_TOKEN') ?? '';
+    if (!adminToken) {
+      // 가드는 토큰이 없으면 모든 요청을 막는다(닫힌 기본값). 그 상태로는
+      // "지표를 내려준다"를 검증할 수 없으므로 원인을 분명히 알리고 멈춘다.
+      throw new Error(
+        'ADMIN_API_TOKEN이 없어 대시보드 e2e를 실행할 수 없습니다. .env 또는 CI env에 설정하세요.',
+      );
+    }
   });
 
   afterAll(async () => {
