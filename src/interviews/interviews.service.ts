@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import { AppException } from '../common/exceptions/app.exception';
@@ -16,6 +16,8 @@ import {
   weightsOf,
 } from '../llm/weight-presets';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { containsPromptInjection } from '../llm/input-moderation';
+import { detectProhibitedTopic } from '../llm/question-guard';
 import { UsageService } from '../usage/usage.service';
 import { User } from '../users/entities/user.entity';
 import { CreateInterviewDto } from './dto/create-interview.dto';
@@ -151,6 +153,8 @@ export interface InterviewListResult {
 
 @Injectable()
 export class InterviewsService {
+  private readonly logger = new Logger(InterviewsService.name);
+
   constructor(
     @InjectRepository(InterviewSession)
     private readonly sessionRepo: Repository<InterviewSession>,
@@ -177,6 +181,8 @@ export class InterviewsService {
     userId: string,
     dto: CreateInterviewDto,
   ): Promise<CreateInterviewResult> {
+    this.assertCleanInput(dto);
+
     const jobRole = await this.resolveJobRole(dto);
 
     // 이용권 판정을 세션 생성보다 먼저 한다 — 만들고 나서 막으면 빈 세션이 쌓인다.
@@ -227,6 +233,32 @@ export class InterviewsService {
       },
       firstQuestion: toMessageView(message),
     };
+  }
+
+  /**
+   * 공고·자소서 원문은 그대로 프롬프트에 실린다. 지시를 덮어쓰려는 문구가 섞이면
+   * 가드레일 자체가 무력해지므로 세션을 만들기 전에 막는다.
+   *
+   * 원문은 민감 개인정보라 로그에 남기지 않는다 — 어느 필드가 걸렸는지만 남긴다.
+   */
+  private assertCleanInput(dto: CreateInterviewDto): void {
+    const fields: [string, string | null | undefined][] = [
+      ['jobPostingText', dto.jobPostingText],
+      ['applicantInfo', dto.applicantInfo],
+    ];
+
+    for (const [field, value] of fields) {
+      if (!containsPromptInjection(value ?? null)) continue;
+
+      this.logger.warn(
+        `프롬프트 인젝션 의심 입력을 거부했습니다 (field=${field})`,
+      );
+      throw new AppException(
+        'INPUT_REJECTED',
+        '입력에 사용할 수 없는 내용이 있어요. 공고와 자기소개 내용만 넣어주세요.',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
   }
 
   /**
@@ -651,16 +683,37 @@ export class InterviewsService {
       questionCount: session.questionCount,
     });
 
-    const questions = [...set.introQuestions, ...set.questions];
+    const introQuestions = this.dropProhibited(set.introQuestions);
+    const questions = this.dropProhibited(set.questions);
 
-    if (set.questions.length === 0) {
+    if (questions.length === 0) {
       throw new AppException(
         'QUESTION_GENERATION_FAILED',
         '질문을 만들지 못했어요. 잠시 후 다시 시도해주세요.',
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
-    return questions;
+    return [...introQuestions, ...questions];
+  }
+
+  /**
+   * 금지 질문(나이·결혼·출신 등)을 걸러낸다 — 프롬프트 설계 §9 "가드레일 이중화".
+   *
+   * 프롬프트에 금지 규칙을 넣어도 공고·자소서 원문에 끌려가 새어나올 수 있다.
+   * 채용절차법상 금지된 질문이 모의 면접에 뜨면 그 관행을 학습시키는 꼴이다.
+   *
+   * 부족분을 재생성해 채우지 않고 **그냥 버린다.** 질문이 하나 적은 면접보다
+   * 불법 질문이 하나 뜨는 편이 훨씬 나쁘다.
+   */
+  private dropProhibited(questions: GeneratedQuestion[]): GeneratedQuestion[] {
+    return questions.filter((question) => {
+      const topic = detectProhibitedTopic(question.content);
+      if (!topic) return true;
+
+      // 질문 원문은 공고에서 파생될 수 있어 로그에 남기지 않는다.
+      this.logger.warn(`금지 주제 질문을 제외했습니다 (topic=${topic})`);
+      return false;
+    });
   }
 
   private async saveModelAnswers(
