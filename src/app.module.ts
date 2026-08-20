@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { envValidationSchema } from './config/env.validation';
@@ -43,6 +44,7 @@ const SECOND_IN_MS = 1000;
     LegalModule,
     PrivacyModule,
     HealthModule,
+    AdminModule,
   ],
   providers: [
     // 순서 주의 — rate limit을 먼저 적용한 뒤 인증을 확인한다.
