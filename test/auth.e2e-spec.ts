@@ -104,6 +104,18 @@ describe('Auth (e2e)', () => {
       .expect(401);
 
     expect((res.body as ErrorBody).error.code).toBe('UNAUTHORIZED');
+    // 앱은 error.message를 그대로 화면에 띄운다 — 영문이 나가면 안 된다.
+    expect((res.body as ErrorBody).error.message).toMatch(/[가-힣]/);
+  });
+
+  it('위조 토큰도 한국어 메시지로 막는다', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/auth/logout')
+      .set('Authorization', 'Bearer invalid.token')
+      .expect(401);
+
+    expect((res.body as ErrorBody).error.code).toBe('UNAUTHORIZED');
+    expect((res.body as ErrorBody).error.message).toMatch(/[가-힣]/);
   });
 
   it('지원하지 않는 provider는 400', async () => {
