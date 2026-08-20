@@ -8,6 +8,9 @@ import {
   NextTurnDecision,
   QuestionSetContext,
 } from './interview-engine';
+import { LlmUsageService } from './llm-usage.service';
+import { LlmMethod } from './entities/llm-usage.entity';
+import { STUB_MODEL } from './model-pricing';
 import { clampScore, CRITERIA } from './weight-presets';
 
 /**
@@ -19,7 +22,31 @@ import { clampScore, CRITERIA } from './weight-presets';
 export class StubInterviewEngine implements InterviewEngine {
   private readonly logger = new Logger(StubInterviewEngine.name);
 
-  generateQuestions(ctx: QuestionSetContext): Promise<GeneratedQuestionSet> {
+  constructor(private readonly usage: LlmUsageService) {}
+
+  /**
+   * 스텁도 호출 기록을 남긴다. 토큰·비용은 0이지만 호출 횟수·지연이 쌓이므로
+   * 실어댑터(#32)를 붙이기 전에 배선과 대시보드가 실제로 도는지 확인할 수 있다.
+   */
+  private async recordCall(
+    method: LlmMethod,
+    sessionId: string,
+    startedAt: number,
+  ): Promise<void> {
+    await this.usage.record({
+      sessionId,
+      method,
+      model: STUB_MODEL,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+
+  async generateQuestions(
+    ctx: QuestionSetContext,
+  ): Promise<GeneratedQuestionSet> {
+    const startedAt = Date.now();
     this.logger.warn(
       'StubInterviewEngine으로 질문을 생성합니다 (마일스톤 2에서 LLM으로 교체).',
     );
@@ -39,7 +66,8 @@ export class StubInterviewEngine implements InterviewEngine {
       intent: '직무 역량 확인',
     }));
 
-    return Promise.resolve({ introQuestions, questions });
+    await this.recordCall('generateQuestions', ctx.sessionId, startedAt);
+    return { introQuestions, questions };
   }
 
   /** 도입 질문은 워밍업이라 톤을 입히지 않고 표준 문구를 쓴다 (프롬프트 설계 §3). */
@@ -51,36 +79,39 @@ export class StubInterviewEngine implements InterviewEngine {
     ];
   }
 
-  decideNextTurn(ctx: NextTurnContext): Promise<NextTurnDecision> {
+  async decideNextTurn(ctx: NextTurnContext): Promise<NextTurnDecision> {
+    const startedAt = Date.now();
+    const decision = this.decide(ctx);
+
+    await this.recordCall('decideNextTurn', ctx.sessionId, startedAt);
+    return decision;
+  }
+
+  private decide(ctx: NextTurnContext): NextTurnDecision {
     if (ctx.followUpDepth >= ctx.maxFollowUp) {
-      return Promise.resolve({ action: 'next', reason: '꼬리질문 한도 도달' });
+      return { action: 'next', reason: '꼬리질문 한도 도달' };
     }
 
     if (this.isShallow(ctx.userAnswer)) {
-      return Promise.resolve({
-        action: 'next',
-        reason: '더 파고들 근거가 부족함',
-      });
+      return { action: 'next', reason: '더 파고들 근거가 부족함' };
     }
 
     if (this.isThorough(ctx.userAnswer)) {
-      return Promise.resolve({
-        action: 'next',
-        reason: '핵심을 충분히 설명함',
-      });
+      return { action: 'next', reason: '핵심을 충분히 설명함' };
     }
 
-    return Promise.resolve({
+    return {
       action: 'follow_up',
       content: this.applyTone(
         '방금 말씀하신 부분에서 본인이 직접 결정한 지점과 그 근거를 조금 더 구체적으로 설명해주시겠어요?',
         ctx.interviewType,
       ),
       reason: '구현·판단 깊이 확인 필요',
-    });
+    };
   }
 
-  evaluate(ctx: EvaluationContext): Promise<InterviewEvaluation> {
+  async evaluate(ctx: EvaluationContext): Promise<InterviewEvaluation> {
+    const startedAt = Date.now();
     const answers = ctx.transcript.filter((turn) => turn.type === 'answer');
     const skipped = ctx.transcript.filter((turn) => turn.type === 'skip');
 
@@ -104,7 +135,8 @@ export class StubInterviewEngine implements InterviewEngine {
 
     const passResult = base >= PASS_THRESHOLD ? 'pass' : 'fail';
 
-    return Promise.resolve({
+    await this.recordCall('evaluate', ctx.sessionId, startedAt);
+    return {
       passResult,
       passReason:
         passResult === 'pass'
@@ -115,7 +147,7 @@ export class StubInterviewEngine implements InterviewEngine {
         questionSeq: question.seq,
         modelAnswer: `"${this.summarize(question.content)}" 질문에는 상황(S)·과제(T)·행동(A)·결과(R) 순으로, 수치로 확인 가능한 결과를 덧붙여 답하는 것이 좋습니다.`,
       })),
-    });
+    };
   }
 
   private questionPool(ctx: QuestionSetContext): string[] {

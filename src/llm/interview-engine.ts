@@ -9,8 +9,13 @@ import { Criterion, CriterionWeights } from './weight-presets';
  */
 export const INTERVIEW_ENGINE = 'INTERVIEW_ENGINE';
 
+/** 모든 호출 컨텍스트가 공유하는 식별자. 사용량·비용을 면접 단위로 묶는 데 쓴다. */
+export interface EngineCallContext {
+  sessionId: string;
+}
+
 /** 세션 생성 시 기본 질문 N개 일괄 생성 컨텍스트 (프롬프트 설계 §3). */
-export interface QuestionSetContext {
+export interface QuestionSetContext extends EngineCallContext {
   jobPostingText: string | null;
   applicantInfo: string | null;
   jobCategory: string | null;
@@ -44,7 +49,7 @@ export interface GeneratedQuestionSet {
 }
 
 /** 답변 제출 시 다음 발화 결정 컨텍스트 (프롬프트 설계 §4). */
-export interface NextTurnContext {
+export interface NextTurnContext extends EngineCallContext {
   baseQuestion: string;
   userAnswer: string;
   followUpDepth: number;
@@ -65,7 +70,7 @@ export interface TranscriptTurn {
 }
 
 /** 최종 평가 컨텍스트 (프롬프트 설계 §6). */
-export interface EvaluationContext {
+export interface EvaluationContext extends EngineCallContext {
   transcript: TranscriptTurn[];
   baseQuestions: { seq: number; content: string }[];
   jobCategory: string | null;
