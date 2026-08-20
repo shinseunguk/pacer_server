@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Pacer 운영 대시보드</title>
+    <style>
+      :root {
+        --bg: #f6f6fa;
+        --surface: #ffffff;
+        --line: #e4e4ed;
+        --text: #16161d;
+        --text2: #5b5b6b;
+        --text3: #8c8c9e;
+        --accent: #6c63ff;
+        --accent-soft: #ecebff;
+        --warn: #c2410c;
+        --warn-soft: #ffedd5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101014;
+          --surface: #191920;
+          --line: #2b2b36;
+          --text: #f2f2f6;
+          --text2: #b4b4c4;
+          --text3: #7e7e92;
+          --accent: #8b84ff;
+          --accent-soft: #23213a;
+          --warn: #fdba74;
+          --warn-soft: #3a2415;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px 20px 64px;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", sans-serif;
+      }
+      main { max-width: 1040px; margin: 0 auto; }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+      }
+      h1 { font-size: 20px; margin: 0; }
+      h2 {
+        font-size: 14px;
+        color: var(--text2);
+        margin: 32px 0 12px;
+        text-transform: none;
+      }
+      .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+      input, select, button {
+        font: inherit;
+        padding: 7px 11px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+      }
+      button { background: var(--accent); color: #fff; border-color: transparent; cursor: pointer; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .card .label { font-size: 12px; color: var(--text3); }
+      .card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+      .card .sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+      .card.flag { background: var(--warn-soft); border-color: transparent; }
+      .card.flag .value, .card.flag .sub { color: var(--warn); }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; }
+      th, td { padding: 9px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+      th:first-child, td:first-child { text-align: left; }
+      th { font-size: 12px; color: var(--text3); font-weight: 600; }
+      tbody tr:last-child td { border-bottom: none; }
+      .chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+      .chart-empty { color: var(--text3); font-size: 13px; align-self: center; margin: 0 auto; }
+      .bar { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+      .note { font-size: 13px; color: var(--text2); margin-top: 8px; }
+      .empty { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 18px; color: var(--text3); font-size: 13px; }
+      #status { font-size: 13px; color: var(--text2); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Pacer 운영 대시보드</h1>
+        <div class="controls">
+          <input id="token" type="password" placeholder="관리자 토큰" autocomplete="off" />
+          <select id="days">
+            <option value="7">최근 7일</option>
+            <option value="30" selected>최근 30일</option>
+            <option value="90">최근 90일</option>
+          </select>
+          <button id="reload">불러오기</button>
+        </div>
+      </header>
+
+      <p id="status">토큰을 입력하고 불러오기를 누르세요.</p>
+
+      <div id="content" hidden>
+        <h2>서비스</h2>
+        <div class="cards" id="service-cards"></div>
+
+        <h2>LLM 비용</h2>
+        <div class="cards" id="cost-cards"></div>
+        <p class="note" id="estimate-note"></p>
+
+        <h2>일자별 비용</h2>
+        <div class="chart" id="daily-chart"></div>
+        <p class="note" id="daily-note"></p>
+
+        <h2>메서드별</h2>
+        <div class="table-wrap"><table id="method-table"></table></div>
+
+        <h2>모델별</h2>
+        <div class="table-wrap"><table id="model-table"></table></div>
+
+        <h2>구독</h2>
+        <div id="subscription-panel"></div>
+      </div>
+    </main>
+
+    <script>
+      var TOKEN_KEY = 'pacer.admin.token';
+      // 상대 경로 'metrics'는 /v1/admin 기준으로 /v1/metrics로 풀린다(마지막 세그먼트 교체).
+      // 현재 경로에 이어 붙여야 /v1/admin/metrics가 된다.
+      var METRICS_URL = location.pathname.replace(/\/+$/, '') + '/metrics';
+      var tokenInput = document.getElementById('token');
+      var daysSelect = document.getElementById('days');
+      var statusEl = document.getElementById('status');
+      var contentEl = document.getElementById('content');
+
+      tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+
+      function usd(value) {
+        return '$' + Number(value || 0).toFixed(value >= 1 ? 2 : 4);
+      }
+      function percent(value) {
+        return (Number(value || 0) * 100).toFixed(1) + '%';
+      }
+      function count(value) {
+        return Number(value || 0).toLocaleString('ko-KR');
+      }
+      function card(label, value, sub, flagged) {
+        return (
+          '<div class="card' + (flagged ? ' flag' : '') + '">' +
+          '<div class="label">' + label + '</div>' +
+          '<div class="value">' + value + '</div>' +
+          (sub ? '<div class="sub">' + sub + '</div>' : '') +
+          '</div>'
+        );
+      }
+      function table(headers, rows) {
+        var head = '<thead><tr>' + headers.map(function (h) {
+          return '<th>' + h + '</th>';
+        }).join('') + '</tr></thead>';
+        var body = '<tbody>' + (rows.length ? rows.map(function (row) {
+          return '<tr>' + row.map(function (cell) {
+            return '<td>' + cell + '</td>';
+          }).join('') + '</tr>';
+        }).join('') : '<tr><td colspan="' + headers.length + '">기록 없음</td></tr>') + '</tbody>';
+        return head + body;
+      }
+
+      function render(data) {
+        var s = data.service;
+        document.getElementById('service-cards').innerHTML =
+          card('가입자', count(s.users)) +
+          card('면접', count(s.sessions), '완료 ' + count(s.completedSessions)) +
+          card('완료율', percent(s.completionRate)) +
+          card('리포트 만족도', percent(s.satisfactionRate),
+               '👍 ' + count(s.feedbackUp) + ' · 👎 ' + count(s.feedbackDown));
+
+        var c = data.cost;
+        // 실측이 추정을 넘으면 구독가의 근거가 흔들린다 — 눈에 띄게 칠한다.
+        var overEstimate = c.estimateRatio !== null && c.estimateRatio > 1;
+        document.getElementById('cost-cards').innerHTML =
+          card('총 비용', usd(c.costUsd), count(c.calls) + '회 호출') +
+          card('면접당 비용', usd(c.costPerSessionUsd),
+               '추정 ' + usd(c.estimatedCostPerSessionUsd), overEstimate) +
+          card('캐시 적중률', percent(c.cacheHitRatio),
+               '입력 ' + count(c.inputTokens) + ' · 출력 ' + count(c.outputTokens)) +
+          card('실패 호출', count(c.errorCalls), '토큰은 나간다');
+
+        var note = document.getElementById('estimate-note');
+        if (c.estimateRatio === null) {
+          note.textContent =
+            '아직 과금된 호출이 없습니다. 실어댑터(#32) 연결 전에는 스텁 호출만 $0으로 기록됩니다.';
+        } else {
+          note.textContent =
+            '실측 ÷ 추정 = ' + c.estimateRatio + '배. ' +
+            (overEstimate
+              ? '추정($0.33)보다 많이 나가고 있습니다 — 구독가 근거를 다시 봐야 합니다.'
+              : '추정 범위 안입니다.');
+        }
+
+        var maxCost = Math.max.apply(null, data.daily.map(function (d) { return d.costUsd; }).concat([0]));
+        // 비용이 전부 0이면 막대가 바닥에 깔린 실선이 되어 오히려 오해를 준다.
+        document.getElementById('daily-chart').innerHTML = maxCost
+          ? data.daily.map(function (d) {
+              var height = Math.round((d.costUsd / maxCost) * 100);
+              return '<div class="bar" style="height:' + Math.max(height, 2) + '%" title="' +
+                d.date + ' · ' + usd(d.costUsd) + ' · ' + d.calls + '회"></div>';
+            }).join('')
+          : '<div class="chart-empty">아직 과금된 호출이 없습니다</div>';
+        document.getElementById('daily-note').textContent = maxCost
+          ? data.daily.length + '일치 · 최대 ' + usd(maxCost) + '/일'
+          : data.daily.length
+            ? data.daily.length + '일간 ' + count(c.calls) + '회 호출 (전부 $0)'
+            : '';
+
+        document.getElementById('method-table').innerHTML = table(
+          ['메서드', '호출', '입력 토큰', '출력 토큰', '비용'],
+          c.byMethod.map(function (row) {
+            return [row.key, count(row.calls), count(row.inputTokens), count(row.outputTokens), usd(row.costUsd)];
+          })
+        );
+        document.getElementById('model-table').innerHTML = table(
+          ['모델', '호출', '입력 토큰', '출력 토큰', '비용'],
+          c.byModel.map(function (row) {
+            return [row.key, count(row.calls), count(row.inputTokens), count(row.outputTokens), usd(row.costUsd)];
+          })
+        );
+
+        // 0을 띄우면 "구독자가 0명"과 "아직 못 센다"가 구분되지 않는다.
+        document.getElementById('subscription-panel').innerHTML =
+          data.unavailable.indexOf('subscriptions') >= 0
+            ? '<div class="empty">결제 도메인(#24)이 아직 없어 구독자 수·MRR을 낼 수 없습니다.</div>'
+            : '';
+
+        contentEl.hidden = false;
+      }
+
+      function load() {
+        var token = tokenInput.value.trim();
+        if (!token) {
+          statusEl.textContent = '관리자 토큰이 필요합니다.';
+          return;
+        }
+        localStorage.setItem(TOKEN_KEY, token);
+        statusEl.textContent = '불러오는 중...';
+
+        fetch(METRICS_URL + '?days=' + daysSelect.value, {
+          headers: { 'x-admin-token': token },
+        })
+          .then(function (res) {
+            if (res.status === 401) throw new Error('토큰이 올바르지 않습니다.');
+            if (!res.ok) throw new Error('불러오지 못했습니다 (' + res.status + ')');
+            return res.json();
+          })
+          .then(function (body) {
+            var data = body.data || body;
+            statusEl.textContent =
+              data.period.from.slice(0, 10) + ' ~ ' + data.period.to.slice(0, 10);
+            render(data);
+          })
+          .catch(function (error) {
+            contentEl.hidden = true;
+            statusEl.textContent = error.message;
+          });
+      }
+
+      document.getElementById('reload').addEventListener('click', load);
+      daysSelect.addEventListener('change', load);
+      if (tokenInput.value) load();
+    </script>
+  </body>
+</html>
