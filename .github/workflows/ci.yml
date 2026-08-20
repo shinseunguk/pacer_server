@@ -38,6 +38,8 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci-access-secret
       JWT_REFRESH_SECRET: ci-refresh-secret
+      # 운영 대시보드 e2e용. 비어 있으면 가드가 모든 요청을 막아 테스트가 통과할 수 없다.
+      ADMIN_API_TOKEN: ci-admin-token
 
     steps:
       - uses: actions/checkout@v4
