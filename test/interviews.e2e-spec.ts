@@ -107,6 +107,18 @@ describe('Interviews (e2e)', () => {
       .send({ idToken: `interview-e2e-${Date.now()}` })
       .expect(200);
     token = (login.body as TokenBody).accessToken;
+
+    // 무료는 총 2회·5문항 고정이라 이 스펙(세션 여러 개)을 돌릴 수 없다.
+    // 스텁 검증기로 구독을 붙여 pro 사용자로 검증한다 (#24).
+    await request(app.getHttpServer())
+      .post('/v1/subscriptions/verify')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        platform: 'stub',
+        receipt: `stub:interview-e2e-${Date.now()}`,
+        productId: 'pro_monthly',
+      })
+      .expect(201);
   });
 
   afterAll(async () => {

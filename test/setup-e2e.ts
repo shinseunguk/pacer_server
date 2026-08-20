@@ -14,3 +14,7 @@ process.env.APPLE_CLIENT_ID = '';
 process.env.THROTTLE_LIMIT = process.env.THROTTLE_LIMIT ?? '10000';
 process.env.THROTTLE_AUTH_LIMIT = process.env.THROTTLE_AUTH_LIMIT ?? '10000';
 process.env.THROTTLE_TTL = process.env.THROTTLE_TTL ?? '60';
+
+// 하루 면접 상한(기본 5)은 약관 fair-use 안전장치다. 스펙은 한 사용자로 세션을
+// 여러 개 만들므로 여기서 넉넉히 연다. 상한 자체는 usage.service.spec.ts가 검증한다.
+process.env.DAILY_INTERVIEW_LIMIT = process.env.DAILY_INTERVIEW_LIMIT ?? '1000';

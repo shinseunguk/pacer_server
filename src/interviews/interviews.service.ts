@@ -15,6 +15,7 @@ import {
   resolveWeightPreset,
   weightsOf,
 } from '../llm/weight-presets';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { UsageService } from '../usage/usage.service';
 import { User } from '../users/entities/user.entity';
 import { CreateInterviewDto } from './dto/create-interview.dto';
@@ -168,6 +169,7 @@ export class InterviewsService {
     private readonly planStore: QuestionPlanStore,
     private readonly usage: UsageService,
     @Inject(INTERVIEW_ENGINE) private readonly engine: InterviewEngine,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /** 세션 생성 → 기본 질문 플랜 생성 → 첫 질문 반환. */
@@ -176,6 +178,10 @@ export class InterviewsService {
     dto: CreateInterviewDto,
   ): Promise<CreateInterviewResult> {
     const jobRole = await this.resolveJobRole(dto);
+
+    // 이용권 판정을 세션 생성보다 먼저 한다 — 만들고 나서 막으면 빈 세션이 쌓인다.
+    await this.subscriptions.consumeInterviewCredit(userId, dto.questionCount);
+    await this.assertDailyInterviewLimit(userId);
 
     const session = await this.sessionRepo.save(
       this.sessionRepo.create({
@@ -221,6 +227,21 @@ export class InterviewsService {
       },
       firstQuestion: toMessageView(message),
     };
+  }
+
+  /**
+   * 하루 면접 시작 상한 (약관 fair-use).
+   * 결제 문제가 아니라 남용 방지이므로 402가 아니라 429로 돌려준다.
+   */
+  private async assertDailyInterviewLimit(userId: string): Promise<void> {
+    const allowed = await this.usage.tryConsumeDailyInterview(userId);
+    if (allowed) return;
+
+    throw new AppException(
+      'DAILY_INTERVIEW_LIMIT',
+      '오늘 시작할 수 있는 면접 수를 모두 사용했어요. 내일 다시 이용해주세요.',
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   /**

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JobRole } from '../jobs/entities/job-role.entity';
 import { LlmModule } from '../llm/llm.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { UsageModule } from '../usage/usage.module';
 import { EvaluationScore } from './entities/evaluation-score.entity';
 import { InterviewMessage } from './entities/interview-message.entity';
@@ -26,6 +27,7 @@ import { QuestionPlanStore } from './question-plan.store';
     ]),
     UsageModule,
     LlmModule,
+    SubscriptionsModule,
   ],
   controllers: [InterviewsController],
   providers: [InterviewsService, QuestionPlanStore],

@@ -7,6 +7,10 @@ import { RedisService } from '../redis/redis.service';
 import { User } from '../users/entities/user.entity';
 import { DailyUsage } from './entities/daily-usage.entity';
 
+/** Redis 카운터 네임스페이스 — 질문 수와 면접 시작 수는 다른 한도다. */
+const BASE_QUESTION_SCOPE = 'base_question';
+const INTERVIEW_SCOPE = 'interview_start';
+
 export interface UsageSummary {
   /** KST 기준 날짜 (YYYY-MM-DD) */
   date: string;
@@ -82,9 +86,10 @@ export class UsageService {
   private async incrementRedis(
     userId: string,
     date: string,
+    scope: string = BASE_QUESTION_SCOPE,
   ): Promise<number | null> {
     try {
-      const key = usageKey(userId, date);
+      const key = usageKey(userId, date, scope);
       const count = await this.redis.getClient().incr(key);
       if (count === 1) {
         await this.redis.getClient().expire(key, secondsUntilKstMidnight());
@@ -129,13 +134,38 @@ export class UsageService {
     });
   }
 
+  /**
+   * 하루 면접 시작 횟수를 세고 상한을 넘으면 false.
+   *
+   * 구독은 무제한이지만 자동화·공유 계정으로 원가가 무너지는 걸 막는 안전장치다.
+   * 가격표에는 노출하지 않고 약관(fair-use)에만 둔다 — 상한을 앞세우면
+   * 무제한이라는 약속이 무색해진다.
+   */
+  async tryConsumeDailyInterview(userId: string): Promise<boolean> {
+    const date = todayInKst();
+    const limit = this.dailyInterviewLimit;
+    const count = await this.incrementRedis(userId, date, INTERVIEW_SCOPE);
+
+    // Redis 장애 시에는 막지 않는다 — 상한은 안전장치일 뿐, 서비스를 세울 이유가 아니다.
+    if (count === null) return true;
+    return count <= limit;
+  }
+
   private get dailyLimit(): number {
     return this.config.get<number>('FREE_DAILY_QUESTION_LIMIT', 20);
   }
+
+  private get dailyInterviewLimit(): number {
+    return this.config.get<number>('DAILY_INTERVIEW_LIMIT', 5);
+  }
 }
 
-function usageKey(userId: string, date: string): string {
-  return `usage:base_question:${userId}:${date}`;
+function usageKey(
+  userId: string,
+  date: string,
+  scope: string = BASE_QUESTION_SCOPE,
+): string {
+  return `usage:${scope}:${userId}:${date}`;
 }
 
 function asMessage(error: unknown): string {
