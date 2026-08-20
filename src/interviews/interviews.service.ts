@@ -331,6 +331,7 @@ export class InterviewsService {
     const weights = weightsOf(weightPreset);
 
     const evaluation = await this.engine.evaluate({
+      sessionId: session.id,
       transcript: messages.map(toTranscriptTurn),
       baseQuestions,
       jobCategory: this.categoryNameOf(session),
@@ -571,6 +572,7 @@ export class InterviewsService {
     if (!baseQuestion?.content) return { action: 'next' };
 
     const decision = await this.engine.decideNextTurn({
+      sessionId: session.id,
       baseQuestion: baseQuestion.content,
       userAnswer: answer,
       followUpDepth: countFollowUpsAfter(messages, baseQuestion.seq),
@@ -617,6 +619,7 @@ export class InterviewsService {
     session: InterviewSession,
   ): Promise<GeneratedQuestion[]> {
     const set = await this.engine.generateQuestions({
+      sessionId: session.id,
       jobPostingText: session.jobPostingText,
       applicantInfo: session.applicantInfo,
       jobCategory: this.categoryNameOf(session),
