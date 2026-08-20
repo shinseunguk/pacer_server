@@ -120,4 +120,47 @@ describe('UsageService', () => {
       expect(summary.remaining).toBe(0);
     });
   });
+
+  describe('tryConsumeDailyInterview', () => {
+    it('상한 안이면 통과시킨다', async () => {
+      client.incr.mockResolvedValue(5);
+
+      await expect(service.tryConsumeDailyInterview(USER_ID)).resolves.toBe(
+        true,
+      );
+    });
+
+    it('상한을 넘으면 막는다', async () => {
+      client.incr.mockResolvedValue(6);
+
+      await expect(service.tryConsumeDailyInterview(USER_ID)).resolves.toBe(
+        false,
+      );
+    });
+
+    it('첫 호출에 자정까지 TTL을 건다', async () => {
+      client.incr.mockResolvedValue(1);
+
+      await service.tryConsumeDailyInterview(USER_ID);
+
+      expect(client.expire).toHaveBeenCalled();
+    });
+
+    it('질문 카운터와 다른 키를 쓴다', async () => {
+      await service.tryConsumeDailyInterview(USER_ID);
+
+      expect(client.incr).toHaveBeenCalledWith(
+        expect.stringContaining('interview_start'),
+      );
+    });
+
+    it('Redis가 죽으면 막지 않는다', async () => {
+      // 상한은 안전장치일 뿐, 서비스를 세울 이유가 아니다.
+      client.incr.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.tryConsumeDailyInterview(USER_ID)).resolves.toBe(
+        true,
+      );
+    });
+  });
 });

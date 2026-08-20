@@ -1,5 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 import { AppException } from '../common/exceptions/app.exception';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { UsageService } from '../usage/usage.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { InterviewsService, MAX_FOLLOW_UP } from './interviews.service';
@@ -103,7 +104,11 @@ describe('InterviewsService', () => {
   let sessionFeedbackRepo: Repo;
   let jobRoleRepo: Repo;
   let planStore: { save: jest.Mock; get: jest.Mock; clear: jest.Mock };
-  let usage: { consumeBaseQuestion: jest.Mock };
+  let usage: {
+    consumeBaseQuestion: jest.Mock;
+    tryConsumeDailyInterview: jest.Mock;
+  };
+  let subscriptions: { consumeInterviewCredit: jest.Mock };
   let engine: {
     generateQuestions: jest.Mock;
     decideNextTurn: jest.Mock;
@@ -125,7 +130,13 @@ describe('InterviewsService', () => {
       get: jest.fn().mockResolvedValue(null),
       clear: jest.fn().mockResolvedValue(undefined),
     };
-    usage = { consumeBaseQuestion: jest.fn().mockResolvedValue(1) };
+    usage = {
+      consumeBaseQuestion: jest.fn().mockResolvedValue(1),
+      tryConsumeDailyInterview: jest.fn().mockResolvedValue(true),
+    };
+    subscriptions = {
+      consumeInterviewCredit: jest.fn().mockResolvedValue(undefined),
+    };
     engine = {
       generateQuestions: jest.fn().mockResolvedValue({
         introQuestions: [
@@ -161,6 +172,7 @@ describe('InterviewsService', () => {
       planStore as unknown as QuestionPlanStore,
       usage as unknown as UsageService,
       engine,
+      subscriptions as unknown as SubscriptionsService,
     );
   });
 

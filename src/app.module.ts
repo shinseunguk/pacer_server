@@ -14,6 +14,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { LegalModule } from './legal/legal.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { RedisModule } from './redis/redis.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 
 const SECOND_IN_MS = 1000;
@@ -44,6 +45,7 @@ const SECOND_IN_MS = 1000;
     LegalModule,
     PrivacyModule,
     HealthModule,
+    SubscriptionsModule,
     AdminModule,
   ],
   providers: [

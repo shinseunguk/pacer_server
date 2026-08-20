@@ -28,6 +28,8 @@ export const envValidationSchema = Joi.object({
 
   // 사용량 — Phase A는 페이월 미노출이라 넉넉히 두고, Phase B에서 20으로 조인다.
   FREE_DAILY_QUESTION_LIMIT: Joi.number().default(20),
+  // 하루 면접 시작 상한 (약관 fair-use). 가격표에는 노출하지 않는다.
+  DAILY_INTERVIEW_LIMIT: Joi.number().default(5),
 
   // 보안 — CORS 화이트리스트(쉼표 구분), 요청 상한(창 초 / 창당 요청 수)
   CORS_ORIGINS: Joi.string().allow('').optional(),

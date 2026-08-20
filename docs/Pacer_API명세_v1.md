@@ -178,7 +178,12 @@
 > 도입 구간에서는 `current: 0`이고, 첫 직무 질문이 나올 때 `current: 1`이 된다.
 > `total`은 세션 생성 시 요청한 `questionCount`(5~15)와 같다.
 > 근거: `Pacer_AI프롬프트설계_v1.md` §3.
-- 에러: 402(시작 전 한도 소진 → 페이월), 422(입력 누락)
+- 에러:
+  - **402 `FREE_QUOTA_EXCEEDED`** — 무료 2회(평생) 소진 → 페이월
+  - **402 `PLAN_REQUIRED`** — 무료 사용자가 `questionCount > 5` 요청 → 페이월
+  - **429 `DAILY_INTERVIEW_LIMIT`** — 하루 면접 시작 상한(약관 fair-use). 결제 문제가
+    아니라 남용 방지이므로 402가 아니다
+  - 422(입력 누락)
 - US: US-2.1~2.3, US-3.1
 
 ### POST /interviews/{id}/answer
@@ -333,18 +338,44 @@
 ### GET /subscriptions/me
 - Response 200: `{ "status": "active", "platform": "apple", "productId": "pro_monthly", "expiresAt": "..." }`
 
+### GET /subscriptions/me
+내 이용권 상태. 무료 잔여 횟수를 포함한다.
+
+- Response 200:
+  ```json
+  {
+    "plan": "free",
+    "isPro": false,
+    "expiresAt": null,
+    "autoRenewing": false,
+    "freeInterviewsUsed": 1,
+    "freeInterviewsRemaining": 1
+  }
+  ```
+- US: US-6.2
+
 ### POST /subscriptions/verify
-IAP 영수증 서버 검증 → 권한 부여.
+IAP 영수증 서버 검증 → 권한 부여. **멱등하다** — 같은 영수증을 다시 보내도
+이용권이 두 번 부여되지 않고 현재 상태를 그대로 돌려준다.
 
 - Request: `{ "platform": "apple", "receipt": "<base64>", "productId": "pro_monthly" }`
-- Response 200: `{ "status": "active", "expiresAt": "...", "isPro": true }`
-- 에러: 422(검증 실패)
+- Response 201: `GET /subscriptions/me` 와 동일한 형태
+- 에러: 422(검증 실패·판매 중이 아닌 상품), 409(다른 계정이 이미 사용한 영수증)
 - US: US-6.2
 
 ### POST /subscriptions/restore
-- Request: `{ "platform": "apple", "receipt": "<base64>" }`
-- Response 200: 복원된 구독 상태
+- Request: `{ "platform": "apple", "receipt": "<base64>", "productId": "pro_monthly" }`
+- Response 201: 복원된 이용권 상태 (verify와 같은 경로 — 스토어가 진실의 원천)
 - US: US-6.2
+
+### POST /subscriptions/notifications
+스토어 서버 알림 수신 (App Store Server Notifications V2 / Google RTDN).
+
+- 인증: 없음(스토어가 호출). **payload 서명을 검증기가 확인**한다
+- Response 200: `{ "received": true }` — 200을 주지 않으면 스토어가 재시도하므로
+  알 수 없는 거래도 200으로 받고 무시한다
+- 상태 반영: `renewed`(만료 연장) / `canceled`(자동갱신만 해제, 기간까지 유지) /
+  `refunded`·`expired`(즉시 회수)
 
 ---
 
@@ -402,9 +433,13 @@ data: {"code":"...","message":"..."}
 
 ## 10. 인증·권한 정리
 
-- 공개: `POST /auth/login/*`, `GET /jobs/categories`, `GET /legal*`, `GET /health`
+- 공개: `POST /auth/login/*`, `GET /jobs/categories`, `GET /legal*`, `GET /health`,
+  `POST /subscriptions/notifications`(스토어 호출 — payload 서명으로 검증)
 - 인증 필요: 그 외 전부
+- 관리자 전용: `GET /admin/*` — `x-admin-token` 헤더. 사용자 JWT로는 통과 불가
 - Pro 전용: 없음(무료도 전 기능 이용, 단 한도 제한) — 한도 초과 지점에서만 402
+  - 무료: 면접 **총 2회(평생, 리셋 없음)** · **5문항 고정**
+  - Pro: 무제한 · 5/10/15문항 (하루 시작 상한은 약관에만 두고 가격표에 노출하지 않는다)
 - 리소스 소유권: interviews/{id} 등은 `user_id` 일치 검증 (타인 데이터 접근 403)
 
 ---
