@@ -16,7 +16,7 @@ import {
 const MEASURED_CHARS = {
   questionSet: 808,
   nextTurn: 665,
-  evaluation: 867,
+  evaluation: 1161,
 } as const;
 
 /** 프롬프트를 다듬는 정도(오탈자·어순)는 허용하고, 문단이 드나든 경우만 잡는다. */
