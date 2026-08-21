@@ -24,7 +24,7 @@ export const PROMPT_VERSION = 'v1';
  * **프롬프트를 고치면 다시 재야 한다.** 길이가 크게 변하면 아래 테스트가 알려준다.
  */
 export const PREFIX_TOKENS = {
-  questionSet: 812,
+  questionSet: 1_040,
   nextTurn: 645,
   evaluation: 1149,
 } as const;
@@ -69,7 +69,13 @@ export const questionSetPrefix = `${SAFETY_RULES}
 - 매번 다른 각도에서 묻는다(같은 공고로 반복해도 질문이 겹치지 않게).
 - 면접 유형이 pressure면 압박 톤(집요한 확인)으로, general이면 표준 톤으로.
 - 질문은 한 번에 하나씩 답할 수 있는 크기로 쪼갠다. 한 문장에 여러 질문을 담지 않는다.
-- 공고에 없는 기술을 임의로 가정하지 않는다. 공고와 지원자 정보에 근거해서만 묻는다.`;
+- 공고에 없는 기술을 임의로 가정하지 않는다. 공고와 지원자 정보에 근거해서만 묻는다.
+
+[회사·직무 이름] 공고에서 회사명(company)과 직무명(roleTitle)을 각각 읽어 담는다.
+- company는 회사 이름만 (예: "빗썸"). roleTitle은 직무 이름만 (예: "iOS 개발자").
+- 둘을 한 칸에 합치지 않는다. 각각 20자를 넘기지 않는다.
+- 공고 제목을 통째로 옮기거나 수식어를 붙이지 않는다("경력", "신입", "채용" 등 제외).
+- 공고에서 확인되지 않는 쪽은 빈 문자열로 둔다. 추측해서 지어내지 않는다.`;
 
 /** 캐시되지 않는 가변 지시. 프리픽스 뒤에 별도 블록으로 붙인다. */
 export function questionSetSystem(ctx: QuestionSetContext): string {

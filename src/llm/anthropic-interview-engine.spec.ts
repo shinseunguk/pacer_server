@@ -27,6 +27,8 @@ function messageWith(payload: unknown): FakeMessage {
 }
 
 const questionSetPayload = {
+  company: '빗썸',
+  roleTitle: 'iOS 개발자',
   introQuestions: [
     { seq: 1, content: '자기소개 부탁드립니다.', intent: '도입' },
     { seq: 2, content: '지원 이유를 말씀해주세요.', intent: '지원동기' },
@@ -89,6 +91,46 @@ describe('AnthropicInterviewEngine', () => {
       expect(set.questions[0].kind).toBe('base_question');
     });
 
+    it('공고에서 읽어낸 회사와 직무를 따로 돌려준다', async () => {
+      // 붙여서 주면 사용자가 직무를 직접 고른 순간 회사까지 사라진다 (#41).
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      const set = await engine.generateQuestions(questionCtx);
+
+      expect(set.company).toBe('빗썸');
+      expect(set.roleTitle).toBe('iOS 개발자');
+    });
+
+    it.each([
+      ['빈 문자열', ''],
+      ['공백뿐', '   '],
+      ['공고 제목을 통째로 옮긴 경우', '가'.repeat(21)],
+    ])('이름이 %s이면 없는 것으로 둔다', async (_case, value) => {
+      // 이력 한 줄에 안 들어가는 값은 없느니만 못하다. '직무 미지정'으로 떨어진다.
+      create.mockResolvedValue(
+        messageWith({
+          ...questionSetPayload,
+          company: value,
+          roleTitle: value,
+        }),
+      );
+
+      const set = await engine.generateQuestions(questionCtx);
+
+      expect(set.company).toBeNull();
+      expect(set.roleTitle).toBeNull();
+    });
+
+    it('이름 안의 줄바꿈은 한 줄로 접는다', async () => {
+      create.mockResolvedValue(
+        messageWith({ ...questionSetPayload, roleTitle: 'iOS\n 개발자' }),
+      );
+
+      const set = await engine.generateQuestions(questionCtx);
+
+      expect(set.roleTitle).toBe('iOS 개발자');
+    });
+
     it('모델이 요청보다 많이 만들어도 questionCount를 넘기지 않는다', async () => {
       // 문항 수는 사용자와의 계약이다 — 모델 판단에 맡기지 않는다.
       create.mockResolvedValue(
@@ -110,6 +152,8 @@ describe('AnthropicInterviewEngine', () => {
     it('모델이 준 seq를 믿지 않고 순서를 서버가 매긴다', async () => {
       create.mockResolvedValue(
         messageWith({
+          company: questionSetPayload.company,
+          roleTitle: questionSetPayload.roleTitle,
           introQuestions: questionSetPayload.introQuestions,
           questions: [
             { seq: 99, content: 'A' },
@@ -189,7 +233,9 @@ describe('AnthropicInterviewEngine', () => {
   describe('스키마 검증', () => {
     it('스키마를 어기면 한 번 더 요청한다', async () => {
       create
-        .mockResolvedValueOnce(messageWith({ introQuestions: 'wrong' }))
+        .mockResolvedValueOnce(
+          messageWith({ company: '', roleTitle: '', introQuestions: 'wrong' }),
+        )
         .mockResolvedValueOnce(messageWith(questionSetPayload));
 
       const set = await engine.generateQuestions(questionCtx);

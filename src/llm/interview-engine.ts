@@ -46,6 +46,20 @@ export interface GeneratedQuestion {
 export interface GeneratedQuestionSet {
   introQuestions: GeneratedQuestion[];
   questions: GeneratedQuestion[];
+  /**
+   * 공고에서 읽어낸 회사명 ("빗썸"). 읽어내지 못하면 null.
+   *
+   * 이력에서 면접을 구분해 주는 축이다 — 직무는 대개 고정이고 회사만 바뀐다.
+   * 그래서 사용자가 직무를 직접 골랐더라도 회사는 따로 붙인다.
+   */
+  company: string | null;
+
+  /**
+   * 공고에서 읽어낸 직무명 ("iOS 개발자"). 읽어내지 못하면 null.
+   *
+   * 사용자가 직무를 고르지도 적지도 않은 세션에서만 쓴다.
+   */
+  roleTitle: string | null;
 }
 
 /** 답변 제출 시 다음 발화 결정 컨텍스트 (프롬프트 설계 §4). */

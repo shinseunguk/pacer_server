@@ -78,6 +78,9 @@ const MAX_TOKENS = {
   evaluate: 16_000,
 } as const;
 
+/** 회사·직무 각각의 상한. 넘으면 공고 제목을 통째로 옮긴 것으로 보고 버린다. */
+const LABEL_MAX_CHARS = 20;
+
 /**
  * 실패 시 재시도 횟수. structured outputs가 형식을 강제하므로 스키마 위반은 드물지만,
  * 모델·SDK 변경에 대비한 폴백으로 1회만 둔다 (프롬프트 설계 §8).
@@ -134,6 +137,8 @@ export class AnthropicInterviewEngine implements InterviewEngine {
         output.questions.slice(0, ctx.questionCount),
         'base_question',
       ),
+      company: normalizeLabel(output.company),
+      roleTitle: normalizeLabel(output.roleTitle),
     };
   }
 
@@ -306,6 +311,18 @@ function toQuestions(
     content: item.content,
     intent: item.intent,
   }));
+}
+
+/**
+ * 모델이 준 회사·직무 이름을 다듬는다.
+ *
+ * 공백만 오거나("읽어내지 못함") 한 줄에 안 들어갈 만큼 길면 버린다.
+ * 이름이 없는 건 정상 상태다 — 화면은 '직무 미지정'으로 떨어진다.
+ */
+function normalizeLabel(raw: string): string | null {
+  const label = raw.replace(/\s+/g, ' ').trim();
+  if (!label) return null;
+  return label.length > LABEL_MAX_CHARS ? null : label;
 }
 
 /** structured outputs 응답에서 JSON 본문을 꺼낸다. */

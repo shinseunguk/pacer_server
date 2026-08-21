@@ -73,6 +73,10 @@
 - 난이도가 높을수록 더 구체적·심화된 질문을 낸다.
 - 매번 다른 각도에서 묻는다(같은 공고로 반복해도 질문이 겹치지 않게).
 - '{{interviewType}}'가 pressure면 압박 톤(집요한 확인)으로, general이면 표준 톤으로.
+
+[회사·직무 이름] 공고에서 company와 roleTitle을 각각 읽어 담는다.
+- company는 회사만(예: "빗썸"), roleTitle은 직무만(예: "iOS 개발자"). 합치지 않는다.
+- 각각 20자 이내. 확인되지 않는 쪽은 빈 문자열로 둔다(지어내지 않는다).
 [안전 규칙 선주입]
 ```
 
@@ -82,6 +86,8 @@
 ### Output Schema
 ```json
 {
+  "company": "빗썸",
+  "roleTitle": "iOS 개발자",
   "introQuestions": [
     { "seq": 1, "type": "intro_question", "content": "자기소개 부탁드립니다.", "intent": "도입" },
     { "seq": 2, "type": "intro_question", "content": "지원하신 이유를 말씀해주세요.", "intent": "지원동기" }
@@ -94,6 +100,11 @@
 
 - `introQuestions`는 항상 2개, `questions`는 정확히 `{{questionCount}}`개다.
 - 각 배열의 `seq`는 **독립적으로** 1부터 센다.
+- `company`는 사용자가 직무를 직접 골랐어도 저장한다(`derived_company`). 이력을 구분해
+  주는 축은 회사이고 직무는 대개 고정이기 때문이다.
+- `roleTitle`은 직무를 고르지도 적지도 않은 세션에서만 쓴다(`derived_role`).
+- 길이 제한은 zod가 아니라 어댑터에서 다듬는다 — 곁다리 값 때문에 질문 세트 전체를
+  버리는 건 손해다.
 
 ---
 
