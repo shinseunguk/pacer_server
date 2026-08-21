@@ -50,6 +50,9 @@ export const envValidationSchema = Joi.object({
   // 마일스톤 2 (LLM 프록시)
   LLM_API_KEY: Joi.string().allow('').optional(),
 
+  // 모델 교체는 배포 없이 env로 — 강등 판단은 데이터가 쌓인 뒤에 한다 (ADR 0004).
+  LLM_MODEL: Joi.string().allow('').optional(),
+
   // 운영 대시보드 토큰. 미설정이면 /admin/metrics는 전부 401이 된다 (닫힌 기본값).
   ADMIN_API_TOKEN: Joi.string().allow('').optional(),
 });

@@ -11,6 +11,10 @@
 process.env.KAKAO_REST_API_KEY = '';
 process.env.APPLE_CLIENT_ID = '';
 
+// LLM도 같은 이유로 비운다. .env에 실키가 있으면 e2e가 실제로 과금되는 호출을 쏘고,
+// 매 실행이 수십 초씩 걸린다. 어댑터 자체는 anthropic-interview-engine.spec.ts가 검증한다.
+process.env.LLM_API_KEY = '';
+
 process.env.THROTTLE_LIMIT = process.env.THROTTLE_LIMIT ?? '10000';
 process.env.THROTTLE_AUTH_LIMIT = process.env.THROTTLE_AUTH_LIMIT ?? '10000';
 process.env.THROTTLE_TTL = process.env.THROTTLE_TTL ?? '60';
