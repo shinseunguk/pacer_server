@@ -55,9 +55,9 @@ describe('AnthropicInterviewEngine', () => {
   let usage: { record: jest.Mock };
   let engine: AnthropicInterviewEngine;
 
-  function build(): AnthropicInterviewEngine {
+  function build(env: Record<string, string> = {}): AnthropicInterviewEngine {
     const config = {
-      get: (key: string) => (key === 'LLM_API_KEY' ? 'sk-ant-test' : undefined),
+      get: (key: string) => (key === 'LLM_API_KEY' ? 'sk-ant-test' : env[key]),
     } as unknown as ConfigService;
 
     const instance = new AnthropicInterviewEngine(
@@ -322,6 +322,135 @@ describe('AnthropicInterviewEngine', () => {
         system: { text: string }[];
       };
       expect(body.system[1].text).toContain('job_fit: 0.35');
+    });
+  });
+
+  describe('메서드별 모델', () => {
+    function bodyOf(): Record<string, unknown> {
+      return (create.mock.calls as unknown[][])[0][0] as Record<
+        string,
+        unknown
+      >;
+    }
+
+    it('지정이 없으면 기본 모델(Opus 5)을 쓴다', async () => {
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      await engine.generateQuestions(questionCtx);
+
+      expect(bodyOf().model).toBe('claude-opus-5');
+    });
+
+    it('decideNextTurn만 기본이 Haiku 4.5다', async () => {
+      // 가장 단순한 판단인데 호출이 가장 잦다 — 실측 85% 절감.
+      create.mockResolvedValue(messageWith({ action: 'next' }));
+
+      await engine.decideNextTurn({
+        sessionId: 's1',
+        baseQuestion: 'Q',
+        userAnswer: 'A',
+        followUpDepth: 0,
+        maxFollowUp: 2,
+        interviewType: 'general',
+        difficulty: 'mid',
+      });
+
+      expect(bodyOf().model).toBe('claude-haiku-4-5');
+    });
+
+    it('evaluate는 Opus 5를 유지한다 — 평가 일관성이 서비스의 존재 이유다', async () => {
+      create.mockResolvedValue(
+        messageWith({
+          overallScore: 70,
+          passResult: 'pass',
+          passReason: '근거',
+          scores: [{ criterion: 'logic', score: 70 }],
+          modelAnswers: [],
+        }),
+      );
+
+      await engine.evaluate({
+        sessionId: 's1',
+        transcript: [],
+        baseQuestions: [],
+        jobCategory: null,
+        jobRole: null,
+        difficulty: 'mid',
+        weightPreset: 'general',
+        weights: { logic: 0.25, job_fit: 0.25, structure: 0.25, keyword: 0.25 },
+      });
+
+      expect(bodyOf().model).toBe('claude-opus-5');
+    });
+
+    it('메서드별 env가 있으면 그 모델을 쓴다', async () => {
+      engine = build({ LLM_MODEL_DECIDE_NEXT_TURN: 'claude-haiku-4-5' });
+      create.mockResolvedValue(messageWith({ action: 'next' }));
+
+      await engine.decideNextTurn({
+        sessionId: 's1',
+        baseQuestion: 'Q',
+        userAnswer: 'A',
+        followUpDepth: 0,
+        maxFollowUp: 2,
+        interviewType: 'general',
+        difficulty: 'mid',
+      });
+
+      expect(bodyOf().model).toBe('claude-haiku-4-5');
+    });
+
+    it('메서드별 지정이 없으면 LLM_MODEL로 떨어진다', async () => {
+      engine = build({ LLM_MODEL: 'claude-sonnet-5' });
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      await engine.generateQuestions(questionCtx);
+
+      expect(bodyOf().model).toBe('claude-sonnet-5');
+    });
+
+    it('adaptive thinking을 지원하지 않는 모델에는 보내지 않는다', async () => {
+      // Haiku 4.5는 adaptive thinking을 400으로 거부한다 — 실측 확인.
+      engine = build({ LLM_MODEL_GENERATE_QUESTIONS: 'claude-haiku-4-5' });
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      await engine.generateQuestions(questionCtx);
+
+      expect(bodyOf().thinking).toBeUndefined();
+    });
+
+    it('프리픽스가 최소 캐시 길이에 미달하면 캐시를 걸지 않는다', async () => {
+      // 걸어봤자 쓰기 요금(1.25배)만 나가고 읽기는 0이다.
+      engine = build({ LLM_MODEL_GENERATE_QUESTIONS: 'claude-haiku-4-5' });
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      await engine.generateQuestions(questionCtx);
+
+      const system = bodyOf().system as { cache_control?: unknown }[];
+      expect(system[0].cache_control).toBeUndefined();
+    });
+
+    it('최소 길이를 넘는 모델에는 캐시를 건다', async () => {
+      create.mockResolvedValue(messageWith(questionSetPayload));
+
+      await engine.generateQuestions(questionCtx);
+
+      const system = bodyOf().system as { cache_control?: unknown }[];
+      expect(system[0].cache_control).toEqual({ type: 'ephemeral' });
+    });
+
+    it('사용량은 실제로 쓴 모델로 기록한다', async () => {
+      engine = build({ LLM_MODEL_GENERATE_QUESTIONS: 'claude-haiku-4-5' });
+      create.mockResolvedValue({
+        ...messageWith(questionSetPayload),
+        model: 'claude-haiku-4-5',
+      });
+
+      await engine.generateQuestions(questionCtx);
+
+      expect(usage.record).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-haiku-4-5' }),
+      );
     });
   });
 });

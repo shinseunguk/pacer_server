@@ -40,6 +40,17 @@ describe('computeCostUsd', () => {
     expect(cost).toBe(0);
   });
 
+  it('날짜가 붙은 모델 ID도 별칭으로 찾아 계산한다', () => {
+    // API는 claude-haiku-4-5-20251001처럼 스냅샷 날짜를 붙여 돌려준다.
+    // 정규화하지 않으면 사용량 기록이 통째로 버려진다 — 실측으로 확인한 버그.
+    const dated = computeCostUsd('claude-haiku-4-5-20251001', {
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+    });
+
+    expect(dated).toBeCloseTo(1, 6);
+  });
+
   it('단가표에 없는 모델은 0원으로 넘기지 않고 예외를 던진다', () => {
     // 조용히 0으로 집계하면 대시보드가 적자를 감춘다.
     expect(() =>
