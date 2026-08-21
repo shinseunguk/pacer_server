@@ -26,7 +26,7 @@ export const PROMPT_VERSION = 'v1';
 export const PREFIX_TOKENS = {
   questionSet: 812,
   nextTurn: 645,
-  evaluation: 855,
+  evaluation: 1149,
 } as const;
 
 /**
@@ -130,7 +130,16 @@ export const evaluationPrefix = `${SAFETY_RULES}
 도입 질문(자기소개·지원동기)과 그 답변은 채점하지 않는다. 지원자 배경을 파악하는
 컨텍스트로만 읽고 항목별 점수·종합 점수에는 반영하지 않는다.
 판정 근거는 대화록의 구체적인 발언을 근거로 든다. 일반론으로 쓰지 않는다.
-점수가 낮을수록 무엇을 어떻게 고쳐야 하는지가 드러나야 한다.`;
+점수가 낮을수록 무엇을 어떻게 고쳐야 하는지가 드러나야 한다.
+
+[판정 근거 작성 규칙]
+- **세 문단으로 나누고 문단 사이를 빈 줄로 구분한다.**
+  1문단 잘한 점 / 2문단 아쉬운 점 / 3문단 종합 판단.
+- 한 문단은 4문장을 넘기지 않는다. 읽는 사람은 휴대폰 화면으로 본다.
+- **질문을 가리킬 때 'seq 5' 같은 내부 번호를 쓰지 않는다.** 사용자에게 seq는
+  보이지 않는 값이라 무슨 질문인지 알 수 없다. 대신 질문 내용을 짧게 인용한다
+  (예: "SwiftUI와 Combine을 묻는 질문에서는").
+- 모범답안도 문단이 둘 이상이면 빈 줄로 나눈다.`;
 
 export function evaluationSystem(ctx: EvaluationContext): string {
   const weights = CRITERIA.map(
