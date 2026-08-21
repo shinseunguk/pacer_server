@@ -15,6 +15,25 @@ const questionItem = z.object({
 });
 
 export const questionSetSchema = z.object({
+  /**
+   * 공고에서 읽어낸 회사명 ("빗썸").
+   *
+   * **직무와 따로 받는다.** 이력에서 면접을 구분해 주는 건 직무가 아니라 회사다.
+   * 같은 사람이 보는 직무는 대개 하나로 고정되고 회사만 바뀌기 때문이다.
+   * 직무와 한 덩어리로 받으면 사용자가 직무를 직접 고른 순간 회사가 함께 사라진다.
+   */
+  company: z.string(),
+
+  /**
+   * 공고에서 읽어낸 직무명 ("iOS 개발자").
+   *
+   * 사용자가 직무를 고르지도 적지도 않은 세션에서만 쓴다.
+   *
+   * 둘 다 읽어낼 수 없으면 빈 문자열이 온다 — 억지로 지어내는 것보다 비는 편이 낫다.
+   * 길이는 여기서 막지 않는다. 이름은 곁다리인데 그것 때문에 스키마 검증이
+   * 깨지면 질문 세트 전체가 버려진다. 다듬는 건 어댑터가 한다.
+   */
+  roleTitle: z.string(),
   introQuestions: z.array(questionItem),
   questions: z.array(questionItem),
 });
@@ -79,10 +98,12 @@ const questionItemJson = {
 export const questionSetJsonSchema = {
   type: 'object',
   properties: {
+    company: { type: 'string' },
+    roleTitle: { type: 'string' },
     introQuestions: { type: 'array', items: questionItemJson },
     questions: { type: 'array', items: questionItemJson },
   },
-  required: ['introQuestions', 'questions'],
+  required: ['company', 'roleTitle', 'introQuestions', 'questions'],
   additionalProperties: false,
 } as const;
 

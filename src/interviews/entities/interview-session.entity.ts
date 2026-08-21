@@ -30,6 +30,24 @@ export class InterviewSession {
   @Column({ name: 'custom_role', type: 'varchar', nullable: true })
   customRole: string | null;
 
+  /**
+   * 공고에서 LLM이 읽어낸 회사명 ("빗썸").
+   *
+   * 직무와 별도 칸에 둔다. 이력을 구분해 주는 건 회사이고, 직무는 대개 고정이라
+   * 한 덩어리로 합치면 사용자가 직무를 직접 고른 순간 회사까지 사라진다.
+   */
+  @Column({ name: 'derived_company', type: 'varchar', nullable: true })
+  derivedCompany: string | null;
+
+  /**
+   * 공고에서 LLM이 읽어낸 직무명 ("iOS 개발자").
+   *
+   * `custom_role`과 섞지 않는다 — 그쪽은 사용자가 직접 적은 값이라
+   * 추출값으로 덮으면 사용자의 입력이 소리 없이 사라진다.
+   */
+  @Column({ name: 'derived_role', type: 'varchar', nullable: true })
+  derivedRole: string | null;
+
   /** paste | url | template */
   @Column({ name: 'job_source', type: 'varchar' })
   jobSource: string;

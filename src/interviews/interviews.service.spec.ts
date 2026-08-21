@@ -14,6 +14,7 @@ interface Repo {
   save: jest.Mock;
   find: jest.Mock;
   findOne: jest.Mock;
+  update: jest.Mock;
 }
 
 /** save는 id가 없는 엔티티에 순번 id를 붙여 돌려준다(실제 저장 동작 모사). */
@@ -29,6 +30,7 @@ function createRepo(prefix: string): Repo {
     ),
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue(null),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
 }
 
@@ -38,6 +40,8 @@ function session(overrides: Record<string, unknown> = {}) {
     user: { id: USER_ID },
     jobRole: { name: '백엔드', category: { name: '개발' } },
     customRole: null,
+    derivedCompany: null,
+    derivedRole: null,
     jobSource: 'paste',
     jobPostingText: '주요 업무: API 개발',
     applicantInfo: null,
@@ -139,6 +143,8 @@ describe('InterviewsService', () => {
     };
     engine = {
       generateQuestions: jest.fn().mockResolvedValue({
+        company: '빗썸',
+        roleTitle: 'iOS 개발자',
         introQuestions: [
           {
             order: 1,
@@ -197,6 +203,69 @@ describe('InterviewsService', () => {
       ]);
       // 도입 질문은 한도를 소모하지 않는다.
       expect(usage.consumeBaseQuestion).not.toHaveBeenCalled();
+    });
+
+    it('직무를 고르지 않았으면 공고에서 읽어낸 회사·직무를 남긴다', async () => {
+      // 공고만 붙여넣은 세션은 이력이 전부 '직무 미지정'으로 보인다 (#41).
+      await service.create(USER_ID, { ...CREATE_DTO, customRole: undefined });
+
+      expect(sessionRepo.update).toHaveBeenCalledWith(expect.any(String), {
+        derivedCompany: '빗썸',
+        derivedRole: 'iOS 개발자',
+      });
+    });
+
+    it('직무를 직접 적었어도 회사는 공고에서 채운다', async () => {
+      // 이력을 구분해 주는 축은 회사다. 직무는 대개 하나로 고정된다.
+      await service.create(USER_ID, {
+        ...CREATE_DTO,
+        customRole: 'iOS 개발자',
+      });
+
+      expect(sessionRepo.update).toHaveBeenCalledWith(expect.any(String), {
+        derivedCompany: '빗썸',
+      });
+    });
+
+    it('사용자가 적은 직무는 추출한 값으로 덮지 않는다', async () => {
+      // 추측이 사용자 입력을 이기면, 적어 둔 값이 소리 없이 사라진다.
+      await service.create(USER_ID, {
+        ...CREATE_DTO,
+        customRole: '아이폰 개발자',
+      });
+
+      const [, patch] = sessionRepo.update.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(patch).not.toHaveProperty('derivedRole');
+    });
+
+    it('이름을 읽어내지 못하면 아무것도 남기지 않는다', async () => {
+      engine.generateQuestions.mockResolvedValue({
+        company: null,
+        roleTitle: null,
+        introQuestions: [],
+        questions: [
+          { order: 1, kind: 'base_question', content: '첫 번째 질문입니다.' },
+        ],
+      });
+
+      await service.create(USER_ID, { ...CREATE_DTO, customRole: undefined });
+
+      expect(sessionRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('이름 저장에 실패해도 면접은 시작된다', async () => {
+      // 이름은 곁다리다. 못 남겼다고 면접을 막을 이유가 없다.
+      sessionRepo.update.mockRejectedValue(new Error('db down'));
+
+      const result = await service.create(USER_ID, {
+        ...CREATE_DTO,
+        customRole: undefined,
+      });
+
+      expect(result.firstQuestion.content).toBe('자기소개 부탁드립니다.');
     });
 
     it('금지 주제 질문은 플랜에서 제외한다', async () => {
@@ -803,6 +872,39 @@ describe('InterviewsService', () => {
         }),
       );
       expect(result.nextCursor).toBe('s2');
+    });
+
+    it('이름은 공고에서 읽은 회사에 직무를 붙여 만든다', async () => {
+      // 직무는 사용자 입력이 이기고, 회사는 공고에서만 온다 (#41).
+      sessionRepo.find.mockResolvedValue([
+        session({ id: 's1' }),
+        session({
+          id: 's2',
+          jobRole: null,
+          customRole: 'iOS 개발자',
+          derivedCompany: '빗썸',
+        }),
+        session({
+          id: 's3',
+          jobRole: null,
+          customRole: null,
+          derivedCompany: '토스',
+          derivedRole: 'iOS 개발자',
+        }),
+        session({ id: 's4', jobRole: null, derivedCompany: '카카오' }),
+        session({ id: 's5', jobRole: null }),
+      ]);
+
+      const result = await service.list(USER_ID, { limit: 10 });
+
+      expect(result.items.map((item) => item.role)).toEqual([
+        '백엔드',
+        '빗썸 iOS 개발자',
+        '토스 iOS 개발자',
+        // 직무를 못 읽었어도 회사만으로 이력이 구분된다.
+        '카카오',
+        null,
+      ]);
     });
 
     it('다음 페이지가 없으면 커서는 null이다', async () => {

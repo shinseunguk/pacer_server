@@ -14,7 +14,7 @@ import {
  * 측정 당시의 글자 수를 함께 기록해 두고, 크게 벗어나면 재측정하라고 알린다.
  */
 const MEASURED_CHARS = {
-  questionSet: 808,
+  questionSet: 1064,
   nextTurn: 665,
   evaluation: 1161,
 } as const;

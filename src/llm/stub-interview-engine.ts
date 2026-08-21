@@ -67,7 +67,8 @@ export class StubInterviewEngine implements InterviewEngine {
     }));
 
     await this.recordCall('generateQuestions', ctx.sessionId, startedAt);
-    return { introQuestions, questions };
+    // 스텁은 공고를 읽지 않는다. 지어내는 대신 이름 없음으로 둔다.
+    return { introQuestions, questions, company: null, roleTitle: null };
   }
 
   /** 도입 질문은 워밍업이라 톤을 입히지 않고 표준 문구를 쓴다 (프롬프트 설계 §3). */

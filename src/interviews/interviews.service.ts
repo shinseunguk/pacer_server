@@ -388,7 +388,7 @@ export class InterviewsService {
       transcript: messages.map(toTranscriptTurn),
       baseQuestions,
       jobCategory: this.categoryNameOf(session),
-      jobRole: session.jobRole?.name ?? session.customRole,
+      jobRole: this.jobRoleOf(session),
       difficulty: session.difficulty,
       weightPreset,
       weights,
@@ -464,7 +464,7 @@ export class InterviewsService {
         interviewType: session.interviewType,
         difficulty: session.difficulty,
         status: session.status,
-        role: session.jobRole?.name ?? session.customRole,
+        role: this.roleNameOf(session),
         progress: this.progressOf(session, messages),
         createdAt: session.createdAt,
       },
@@ -558,7 +558,7 @@ export class InterviewsService {
     return {
       items: items.map((session) => ({
         id: session.id,
-        role: session.jobRole?.name ?? session.customRole,
+        role: this.roleNameOf(session),
         interviewType: session.interviewType,
         status: session.status,
         score: session.finalScore,
@@ -676,12 +676,14 @@ export class InterviewsService {
       jobPostingText: session.jobPostingText,
       applicantInfo: session.applicantInfo,
       jobCategory: this.categoryNameOf(session),
-      jobRole: session.jobRole?.name ?? session.customRole,
+      jobRole: this.jobRoleOf(session),
       interviewType: session.interviewType,
       difficulty: session.difficulty,
       language: session.language,
       questionCount: session.questionCount,
     });
+
+    await this.rememberJobLabels(session, set);
 
     const introQuestions = this.dropProhibited(set.introQuestions);
     const questions = this.dropProhibited(set.questions);
@@ -694,6 +696,47 @@ export class InterviewsService {
       );
     }
     return [...introQuestions, ...questions];
+  }
+
+  /**
+   * 공고에서 읽어낸 회사·직무 이름을 세션에 남긴다.
+   *
+   * 직무를 고르지도, 적지도 않은 세션은 이력이 전부 '직무 미지정'으로 보인다.
+   * 질문 생성이 이미 공고를 읽으니 이름만 받아 붙여 준다.
+   *
+   * **회사는 사용자가 직무를 골랐어도 채운다.** 이력을 구분해 주는 축은 회사이고,
+   * 직무는 대개 하나로 고정되기 때문이다. 반대로 직무는 사용자가 남긴 값이 있으면
+   * 손대지 않는다 — 추측이 입력을 이기면 적어 둔 값이 소리 없이 사라진다.
+   *
+   * 저장에 실패해도 면접은 계속되어야 하므로 예외를 밖으로 내보내지 않는다.
+   */
+  private async rememberJobLabels(
+    session: InterviewSession,
+    labels: { company: string | null; roleTitle: string | null },
+  ): Promise<void> {
+    const patch: Partial<InterviewSession> = {};
+
+    if (labels.company && !session.derivedCompany) {
+      patch.derivedCompany = labels.company;
+    }
+    if (labels.roleTitle && !this.hasUserRole(session)) {
+      patch.derivedRole = labels.roleTitle;
+    }
+    if (Object.keys(patch).length === 0) return;
+
+    Object.assign(session, patch);
+    try {
+      await this.sessionRepo.update(session.id, patch);
+    } catch (error) {
+      // 이름은 곁다리다. 못 남겼다고 면접을 막지 않는다.
+      this.logger.warn(`직무 이름을 저장하지 못했습니다: ${String(error)}`);
+    }
+  }
+
+  private hasUserRole(session: InterviewSession): boolean {
+    return Boolean(
+      session.jobRole || session.customRole || session.derivedRole,
+    );
   }
 
   /**
@@ -900,6 +943,29 @@ export class InterviewsService {
 
   private categoryNameOf(session: InterviewSession): string | null {
     return session.jobRole?.category?.name ?? null;
+  }
+
+  /**
+   * 화면에 보여줄 이름 — "빗썸 iOS 개발자".
+   *
+   * 회사는 공고에서만 나오고, 직무는 사용자가 고르거나 적은 값이 항상 우선한다.
+   * 두 축을 따로 뽑아 붙이는 이유: 같은 사람의 이력은 직무가 거의 고정이고
+   * 회사만 바뀐다. 회사를 떨어뜨리면 이력이 전부 같은 이름이 된다.
+   */
+  private roleNameOf(session: InterviewSession): string | null {
+    return (
+      [session.derivedCompany, this.jobRoleOf(session)]
+        .filter(Boolean)
+        .join(' ') || null
+    );
+  }
+
+  /**
+   * LLM에 넘기는 직무. 회사명은 빼고 직무만 준다 —
+   * 직무 적합도(job_fit) 판단에 회사 이름은 잡음이다.
+   */
+  private jobRoleOf(session: InterviewSession): string | null {
+    return session.jobRole?.name ?? session.customRole ?? session.derivedRole;
   }
 }
 

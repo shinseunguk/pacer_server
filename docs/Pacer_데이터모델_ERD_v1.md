@@ -54,6 +54,13 @@
 **job_roles**: `id(uuid PK)`, `category_id(FK→job_categories)`, `name(varchar)`, `sort_order(int)`
 
 - 세션은 `job_role_id`로 참조. "기타·직접입력"은 role 미지정 + 세션의 `custom_role` 사용.
+- 화면에 보이는 이름은 **회사 + 직무**를 붙여 만든다 (예: "빗썸 iOS 개발자").
+  - 회사: `derived_company` — 공고에서만 나온다.
+  - 직무: `job_roles.name` → `custom_role` → `derived_role` 순.
+- **회사와 직무를 한 칸에 합치지 않는 이유**: 같은 사용자의 이력은 직무가 거의 고정이고
+  회사만 바뀐다. 합쳐서 받으면 사용자가 직무를 직접 고른 순간 회사까지 함께 사라져
+  이력이 전부 같은 이름이 된다.
+- `custom_role`에 추출값을 덮지 않는다 — 사용자 입력과 추측이 섞이면 어느 쪽인지 알 수 없다.
 
 ### interview_sessions
 면접 1건(설정 + 결과 요약).
@@ -64,6 +71,8 @@
 | user_id | uuid | FK→users | |
 | job_role_id | uuid | FK→job_roles, NULL | 템플릿 선택 시 |
 | custom_role | varchar | NULL | 기타 직접입력 |
+| derived_company | varchar | NULL | 공고에서 LLM이 읽어낸 회사명 (질문 생성 시 1회) |
+| derived_role | varchar | NULL | 공고에서 LLM이 읽어낸 직무명 (질문 생성 시 1회) |
 | job_source | varchar | NOT NULL | paste / url / template |
 | job_posting_text | text | NULL | 공고 원문(민감·파기 대상) |
 | applicant_info | text | NULL | 경력·자소서(민감·파기 대상) |
