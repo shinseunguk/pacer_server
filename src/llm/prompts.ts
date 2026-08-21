@@ -16,6 +16,20 @@ import { CRITERIA } from './weight-presets';
 export const PROMPT_VERSION = 'v1';
 
 /**
+ * 각 캐시 프리픽스의 토큰 수 — **`count_tokens`로 실측한 값**(2026-08-21, Opus 5 기준).
+ *
+ * 모델마다 최소 캐시 길이가 달라(Opus 5: 512 / Sonnet 5: 1,024 / Haiku 4.5: 4,096)
+ * 캐시를 걸어도 되는지 판단하려면 길이를 알아야 한다. 미달인데 걸면 쓰기 요금만 나간다.
+ *
+ * **프롬프트를 고치면 다시 재야 한다.** 길이가 크게 변하면 아래 테스트가 알려준다.
+ */
+export const PREFIX_TOKENS = {
+  questionSet: 812,
+  nextTurn: 645,
+  evaluation: 855,
+} as const;
+
+/**
  * 모든 호출에 선주입하는 안전 규칙 (§2).
  *
  * **반드시 시스템 프롬프트 맨 앞에 온다.** 프롬프트 캐시는 프리픽스 기준이라

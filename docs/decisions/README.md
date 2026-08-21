@@ -38,3 +38,4 @@
 | [0005](./0005-docs-layout.md) | 문서는 성격별로 나누고, 공유 문서는 서버를 정본으로 | 채택 | 2026-08-18 |
 | [0006](./0006-intro-questions-excluded.md) | 도입 질문을 문항 수·평가에서 제외 | 채택 | 2026-08-19 |
 | [0007](./0007-subscription-before-phase-b.md) | 결제를 Phase A에서 앞당겨 구현한다 | 채택 | 2026-08-20 |
+| [0008](./0008-per-method-model.md) | 모델을 메서드별로 나누고 decideNextTurn만 Haiku 4.5 | 채택 | 2026-08-21 |
